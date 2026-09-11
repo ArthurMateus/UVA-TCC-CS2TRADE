@@ -1,0 +1,152 @@
+[
+ {
+  "id": "Sawed-Off | Sand Dashed|The 2021 Dust 2 Collection",
+  "name": "Sawed-Off | Sand Dashed",
+  "rarity": 0,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 0.8,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "P250 | Sand Dune|The 2021 Dust 2 Collection",
+  "name": "P250 | Sand Dune",
+  "rarity": 0,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 0.8,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "Nova | Predator|The 2021 Dust 2 Collection",
+  "name": "Nova | Predator",
+  "rarity": 0,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 0.7,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "MP9 | Sand Dashed|The 2021 Dust 2 Collection",
+  "name": "MP9 | Sand Dashed",
+  "rarity": 1,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 0.8,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "Glock-18 | Sand Dune|The 2021 Dust 2 Collection",
+  "name": "Glock-18 | Sand Dune",
+  "rarity": 1,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 0.7,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "AK-47 | Elite Build|The 2021 Dust 2 Collection",
+  "name": "AK-47 | Elite Build",
+  "rarity": 2,
+  "collection": "The 2021 Dust 2 Collection",
+  "min_float": 0.0,
+  "max_float": 1.0,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "MAG-7 | Counter Terrace|The Cobblestone Collection",
+  "name": "MAG-7 | Counter Terrace",
+  "rarity": 0,
+  "collection": "The Cobblestone Collection",
+  "min_float": 0.0,
+  "max_float": 1.0,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "PP-Bizon | Chalk|The Cobblestone Collection",
+  "name": "PP-Bizon | Chalk",
+  "rarity": 0,
+  "collection": "The Cobblestone Collection",
+  "min_float": 0.0,
+  "max_float": 0.9,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "Five-SeveN | Kami|The Cobblestone Collection",
+  "name": "Five-SeveN | Kami",
+  "rarity": 1,
+  "collection": "The Cobblestone Collection",
+  "min_float": 0.0,
+  "max_float": 0.6,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "UMP-45 | Corporal|The Cobblestone Collection",
+  "name": "UMP-45 | Corporal",
+  "rarity": 1,
+  "collection": "The Cobblestone Collection",
+  "min_float": 0.0,
+  "max_float": 0.8,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "AWP | Corticera|The Cobblestone Collection",
+  "name": "AWP | Corticera",
+  "rarity": 2,
+  "collection": "The Cobblestone Collection",
+  "min_float": 0.0,
+  "max_float": 0.55,
+  "stattrak_capable": false,
+  "souvenir_capable": true
+ },
+ {
+  "id": "MP7 | Cirrus|The Norse Collection",
+  "name": "MP7 | Cirrus",
+  "rarity": 0,
+  "collection": "The Norse Collection",
+  "min_float": 0.0,
+  "max_float": 1.0,
+  "stattrak_capable": true,
+  "souvenir_capable": false
+ },
+ {
+  "id": "Tec-9 | Snek|The Norse Collection",
+  "name": "Tec-9 | Snek",
+  "rarity": 1,
+  "collection": "The Norse Collection",
+  "min_float": 0.0,
+  "max_float": 0.9,
+  "stattrak_capable": true,
+  "souvenir_capable": false
+ },
+ {
+  "id": "Galil AR | Vandal|The Norse Collection",
+  "name": "Galil AR | Vandal",
+  "rarity": 1,
+  "collection": "The Norse Collection",
+  "min_float": 0.0,
+  "max_float": 0.7,
+  "stattrak_capable": true,
+  "souvenir_capable": false
+ },
+ {
+  "id": "M4A1-S | Cyrex|The Norse Collection",
+  "name": "M4A1-S | Cyrex",
+  "rarity": 2,
+  "collection": "The Norse Collection",
+  "min_float": 0.0,
+  "max_float": 0.5,
+  "stattrak_capable": true,
+  "souvenir_capable": false
+ }
+]

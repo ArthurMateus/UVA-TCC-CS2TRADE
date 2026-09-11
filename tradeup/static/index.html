@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CS2 Trade-Up Browser</title>
+<style>
+:root{
+  --bg:#0d1015; --panel:#151a21; --card:#1a212a; --line:#252d38;
+  --fg:#e8eef5; --dim:#8b98a8; --faint:#5c6875;
+  --ok:#3fb950; --bad:#f85149; --warn:#d29922; --acc:#58a6ff;
+  --deep:#3fb950; --okl:#7fc98a; --thin:#d29922; --dead:#f85149;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);
+  font:14px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+header{padding:16px 22px;border-bottom:1px solid var(--line);
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  position:sticky;top:0;background:var(--bg);z-index:20}
+h1{font-size:17px;font-weight:650;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:12.5px}
+.wrap{display:grid;grid-template-columns:290px 1fr;gap:0;min-height:calc(100vh - 54px)}
+aside{border-right:1px solid var(--line);padding:18px;background:var(--panel);
+  position:sticky;top:54px;height:calc(100vh - 54px);overflow-y:auto}
+main{padding:18px 22px 60px}
+.grp{margin-bottom:20px}
+.grp>h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--faint);margin-bottom:9px;font-weight:600}
+label{display:block;font-size:12px;color:var(--dim);margin:9px 0 4px}
+input,select{width:100%;background:#0b0f14;border:1px solid var(--line);
+  color:var(--fg);padding:7px 9px;border-radius:6px;font:inherit;font-size:13px}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+input[type=range]{padding:0;height:22px;accent-color:var(--acc);border:0;background:none}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:12.5px;color:var(--dim)}
+.chk input{width:auto}
+.bignum{font-variant-numeric:tabular-nums;font-size:19px;font-weight:650;
+  color:var(--acc);letter-spacing:-.02em}
+button{width:100%;background:var(--acc);border:0;color:#06121f;font-weight:650;
+  padding:10px;border-radius:7px;cursor:pointer;font:inherit;font-weight:650;margin-top:6px}
+button:hover{filter:brightness(1.08)}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-weight:500;padding:7px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:4px 11px;font-size:12px;color:var(--dim)}
+.pill b{color:var(--fg);font-variant-numeric:tabular-nums}
+.card{background:var(--card);border:1px solid var(--line);border-radius:11px;
+  margin-bottom:12px;overflow:hidden;transition:border-color .12s}
+.card:hover{border-color:#33404f}
+.chead{display:grid;grid-template-columns:34px 1fr repeat(5,minmax(74px,auto)) 30px;
+  gap:12px;align-items:center;padding:12px 15px;cursor:pointer}
+.rank{font-size:15px;font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums}
+.tgt{min-width:0}
+.tgt .cn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tgt .cs{color:var(--dim);font-size:11.5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin-top:1px}
+.m{text-align:right;font-variant-numeric:tabular-nums}
+.m .v{font-weight:640;font-size:14.5px}
+.m .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.pos{color:var(--ok)}.neg{color:var(--bad)}.wn{color:var(--warn)}
+.caret{color:var(--faint);transition:transform .15s;text-align:center}
+.card.open .caret{transform:rotate(90deg)}
+.body{display:none;border-top:1px solid var(--line);padding:15px;background:#12171e}
+.card.open .body{display:block}
+.warn{background:rgba(210,153,34,.09);border-left:3px solid var(--warn);
+  padding:9px 12px;border-radius:0 6px 6px 0;font-size:12.5px;color:#e4c374;
+  margin-bottom:12px}
+.warn.crit{background:rgba(248,81,73,.09);border-color:var(--bad);color:#f0a5a0}
+h4{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+  margin:14px 0 8px;font-weight:600}
+h4:first-child{margin-top:0}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));gap:9px}
+.item{background:#0d1218;border:1px solid var(--line);border-radius:8px;padding:9px;
+  display:flex;gap:9px;align-items:center}
+.item img{width:56px;height:42px;object-fit:contain;flex-shrink:0}
+.item .d{min-width:0;flex:1}
+.item .n{font-size:12px;font-weight:560;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.item .w{font-size:10.5px;color:var(--dim);margin-top:1px}
+.item .f{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;
+  margin-top:2px}
+.item .p{font-size:12.5px;font-weight:640;margin-top:3px;font-variant-numeric:tabular-nums}
+.oc{border-left:3px solid var(--line)}
+.oc.best{border-left-color:var(--ok)}
+.tag{display:inline-block;font-size:9.5px;padding:1px 6px;border-radius:9px;
+  text-transform:uppercase;letter-spacing:.05em;font-weight:650;margin-left:5px;
+  vertical-align:middle}
+.t-deep{background:rgba(63,185,80,.16);color:var(--deep)}
+.t-ok{background:rgba(127,201,138,.14);color:var(--okl)}
+.t-thin{background:rgba(210,153,34,.16);color:var(--thin)}
+.t-dead{background:rgba(248,81,73,.16);color:var(--dead)}
+.t-unknown{background:rgba(139,152,168,.14);color:var(--dim)}
+.sv{background:rgba(88,166,255,.15);color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+th{text-align:right;color:var(--faint);font-weight:500;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.06em;padding:0 8px 6px}
+th:first-child,td:first-child{text-align:left}
+td{padding:5px 8px;border-top:1px solid #1d242d;font-variant-numeric:tabular-nums;
+  text-align:right}
+.empty{text-align:center;padding:60px 20px;color:var(--dim)}
+.empty h2{font-size:16px;margin-bottom:8px;color:var(--fg)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+  border-top-color:var(--acc);border-radius:50%;animation:s .7s linear infinite;
+  vertical-align:-2px;margin-right:7px}
+@keyframes s{to{transform:rotate(360deg)}}
+.note{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
+@media(max-width:920px){.wrap{grid-template-columns:1fr}
+  aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .chead{grid-template-columns:28px 1fr repeat(2,minmax(66px,auto)) 26px}
+  .chead .hide{display:none}}
+</style>
+
+<header>
+  <h1>CS2 Trade-Up Browser</h1>
+  <span class="sub" id="meta">loading…</span>
+</header>
+
+<div class="wrap">
+<aside>
+  <div class="grp">
+    <h3>Budget</h3>
+    <div class="bignum" id="budgetLbl">R$ 200</div>
+    <input type="range" id="budgetRange" min="1" max="1000" step="1" value="200">
+    <div class="row" style="margin-top:6px">
+      <input type="number" id="budget" value="200" step="10" min="1">
+      <select id="currency">
+        <option value="BRL" selected>BRL</option><option value="USD">USD</option>
+        <option value="EUR">EUR</option><option value="GBP">GBP</option>
+      </select>
+    </div>
+    <div class="note">Max total input cost per contract.</div>
+  </div>
+
+  <div class="grp">
+    <h3>Contract</h3>
+    <label>Input rarity</label>
+    <select id="rarity"></select>
+    <label>Odds model</label>
+    <select id="odds">
+      <option value="per_input" selected>per item (current)</option>
+      <option value="outcome_weighted">outcome weighted (legacy)</option>
+    </select>
+    <label>Float percentile you can source</label>
+    <input type="number" id="floatPct" value="0.15" step="0.05" min="0" max="1">
+    <div class="chk"><input type="checkbox" id="souvenir" checked>
+      <label for="souvenir" style="margin:0">Allow Souvenir inputs</label></div>
+  </div>
+
+  <div class="grp">
+    <h3>Filters</h3>
+    <label>Min ROI %</label>
+    <input type="number" id="minRoi" value="105" step="5">
+    <label>Min profit</label>
+    <input type="number" id="minProfit" value="0" step="1">
+    <label>Min liquidity (worst outcome)</label>
+    <select id="liq">
+      <option value="any" selected>any</option>
+      <option value="ok">ok or better</option>
+      <option value="deep">deep only</option>
+    </select>
+    <div class="chk"><input type="checkbox" id="hideConc" checked>
+      <label for="hideConc" style="margin:0">Hide one-outcome bets</label></div>
+    <div class="chk"><input type="checkbox" id="adjusted" checked>
+      <label for="adjusted" style="margin:0">Liquidity-adjusted values</label></div>
+  </div>
+
+  <div class="grp">
+    <h3>Sort &amp; size</h3>
+    <label>Sort by</label>
+    <select id="sort">
+      <option value="profit" selected>raw profit</option>
+      <option value="roi">profitability (ROI)</option>
+      <option value="ev">expected value</option>
+      <option value="cost">cheapest first</option>
+      <option value="safety">chance of profit</option>
+    </select>
+    <label>Show</label>
+    <select id="top">
+      <option>10</option><option selected>20</option><option>50</option>
+    </select>
+  </div>
+
+  <div class="grp">
+    <h3>Selling fee</h3>
+    <select id="fee">
+      <option value="" selected>Steam — 13% of listing</option>
+      <option value="0.02">CSFloat — 2%</option>
+      <option value="0.08">Skinport — 8%</option>
+      <option value="0">None (0%)</option>
+    </select>
+    <div class="note">Steam's cut is 5%+10% <em>of the seller's proceeds</em>,
+      which is 13.04% of the price a buyer pays. List at 100, receive 86.96.</div>
+  </div>
+
+  <button id="run">Scan</button>
+  <button class="ghost" id="reset">Reset filters</button>
+</aside>
+
+<main>
+  <div class="bar" id="bar"></div>
+  <div id="out"><div class="empty"><h2>Ready</h2>
+    <p>Set a budget and hit Scan.</p></div></div>
+</main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let SYM = 'R$', LAST = [];
+
+const money = v => SYM + (Math.abs(v) >= 1000
+  ? v.toLocaleString(undefined,{maximumFractionDigits:0})
+  : v.toFixed(2));
+
+function syncBudget(src){
+  const v = src === 'r' ? $('budgetRange').value : $('budget').value;
+  $('budget').value = v; $('budgetRange').value = Math.min(v, 1000);
+  $('budgetLbl').textContent = SYM + ' ' + Number(v).toLocaleString();
+}
+$('budgetRange').oninput = () => syncBudget('r');
+$('budget').oninput = () => syncBudget('n');
+$('currency').onchange = e => {
+  SYM = {BRL:'R$',USD:'$',EUR:'€',GBP:'£'}[e.target.value] || '';
+  syncBudget('n');
+};
+
+fetch('/api/meta').then(r=>r.json()).then(m=>{
+  $('meta').innerHTML = `${m.skins} skins · ${m.images} images · ` +
+    (m.snapshot_exists ? `prices: <b>${m.snapshot}</b>`
+      : `<span style="color:var(--warn)">no snapshot — sample data</span>`) +
+    (m.liquidity ? '' : ' · <span style="color:var(--warn)">liquidity.py missing</span>');
+  $('rarity').innerHTML = m.tiers.map(t =>
+    `<option value="${t.key}"${t.key==='milspec'?' selected':''}>` +
+    `${t.label} (${t.collections} collections)</option>`).join('');
+});
+
+function params(){
+  const fee = $('fee').value;
+  const p = {
+    budget: $('budget').value, rarity: $('rarity').value,
+    currency: $('currency').value, souvenir: $('souvenir').checked,
+    float_percentile: $('floatPct').value, odds: $('odds').value,
+    min_roi: $('minRoi').value, min_profit: $('minProfit').value,
+    liquidity: $('liq').value, hide_concentrated: $('hideConc').checked,
+    adjusted: $('adjusted').checked, sort: $('sort').value, top: $('top').value,
+  };
+  if (fee !== '') p.fee_rate = fee;
+  return new URLSearchParams(p);
+}
+
+async function run(){
+  $('out').innerHTML = `<div class="empty"><span class="spin"></span>
+    Scanning collections…</div>`;
+  $('bar').innerHTML = '';
+  try{
+    const r = await fetch('/api/scan?' + params());
+    if(!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const j = await r.json();
+    SYM = j.symbol || SYM; LAST = j.results;
+    render(j);
+  }catch(e){
+    $('out').innerHTML = `<div class="empty"><h2>Scan failed</h2><p>${e.message}</p></div>`;
+  }
+}
+$('run').onclick = run;
+$('reset').onclick = () => {
+  $('minRoi').value=105; $('minProfit').value=0; $('liq').value='any';
+  $('hideConc').checked=true; $('adjusted').checked=true; $('sort').value='profit';
+};
+['sort','top','minRoi','minProfit','liq','hideConc','adjusted'].forEach(id=>{
+  $(id).addEventListener('change', ()=>{ if(LAST.length) run(); });
+});
+
+function render(j){
+  $('bar').innerHTML =
+    `<span class="pill"><b>${j.count}</b> match</span>` +
+    `<span class="pill">of <b>${j.scanned}</b> scanned</span>` +
+    (j.adjusted ? `<span class="pill">values are <b>liquidity-adjusted</b></span>`
+                : `<span class="pill">values are <b>raw listings</b></span>`);
+
+  if(!j.results.length){
+    $('out').innerHTML = `<div class="empty"><h2>Nothing matched</h2>
+      <p>Lower Min ROI, raise the budget, or set liquidity to “any”.</p></div>`;
+    return;
+  }
+  $('out').innerHTML = j.results.map((r,i)=>card(r,i,j.adjusted)).join('');
+  document.querySelectorAll('.chead').forEach(h =>
+    h.onclick = () => h.parentElement.classList.toggle('open'));
+}
+
+function card(r,i,adj){
+  const profit = adj ? r.profit_adjusted : r.profit;
+  const roi    = adj ? r.roi_adjusted_pct : r.roi_pct;
+  const ev     = adj ? r.ev_adjusted : r.ev_net;
+  const cls    = profit > 0 ? 'pos' : 'neg';
+  const best   = [...r.outcomes].sort((a,b)=>b.net-a.net)[0];
+
+  const warns = (r.warnings||[]).map(w =>
+    `<div class="warn${r.concentrated?' crit':''}">${w}</div>`).join('');
+  const be = r.breakeven_pct != null
+    ? `<div class="warn${r.breakeven_pct>90?' crit':''}">Break-even needs
+       <b>${r.breakeven_pct}%</b> of the listed price on ${r.top_outcome}.</div>` : '';
+
+  return `<div class="card">
+    <div class="chead">
+      <div class="rank">${i+1}</div>
+      <div class="tgt">
+        <div class="cn">${r.target_collection}
+          ${r.souvenir_inputs?`<span class="tag sv">${r.souvenir_inputs} sv</span>`:''}</div>
+        <div class="cs">${r.k_target}× target${r.filler_collection
+          ? ` + ${10-r.k_target}× ${r.filler_collection}` : ''}</div>
+      </div>
+      <div class="m"><div class="v">${money(r.cost)}</div><div class="k">cost</div></div>
+      <div class="m hide"><div class="v">${money(ev)}</div><div class="k">EV</div></div>
+      <div class="m"><div class="v ${cls}">${profit>0?'+':''}${money(profit)}</div>
+        <div class="k">profit</div></div>
+      <div class="m"><div class="v ${cls}">${roi.toFixed(0)}%</div><div class="k">ROI</div></div>
+      <div class="m hide"><div class="v">${r.profit_chance_pct.toFixed(0)}%</div>
+        <div class="k">P(win)</div></div>
+      <div class="caret">›</div>
+    </div>
+    <div class="body">
+      ${warns}${be}
+      <h4>Outcomes — average trade-up float ${r.avg_normalized_float}</h4>
+      <div class="items">${r.outcomes.map(o=>oitem(o,o===best)).join('')}</div>
+      <table>
+        <tr><th>Outcome</th><th>Float cap</th><th>Outcome float</th><th>Wear</th>
+            <th>Chance</th><th>Listed</th><th>Gross</th><th>Net</th></tr>
+        ${r.outcomes.map(o=>`<tr>
+          <td>${o.skin}</td>
+          <td>${o.min_float!=null?`${o.min_float} – ${o.max_float}`:'—'}</td>
+          <td>${o.float.toFixed(6)}</td><td>${o.wear}</td>
+          <td>${o.p_pct}%</td>
+          <td>${o.listings!=null?o.listings:(o.volume24!=null?o.volume24+'/day':'—')}</td>
+          <td>${money(o.gross)}</td><td>${money(o.net)}</td></tr>`).join('')}
+      </table>
+      <h4>Buy these ${r.inputs.length} items</h4>
+      <div class="items">${shopping(r.inputs)}</div>
+      <table>
+        <tr><th>n*</th><th>σ</th><th>unpriced</th><th>top outcome share</th></tr>
+        <tr><td>${r.contracts_to_confidence ?? '—'} contracts</td>
+            <td>${r.stddev.toFixed(2)}</td><td>${r.unpriced_mass_pct}%</td>
+            <td>${r.top_ev_share_pct != null ? r.top_ev_share_pct+'%' : '—'}</td></tr>
+      </table>
+      <div class="note">n* = identical contracts before the edge outweighs the
+        noise. It assumes the prices are right — it cannot see a bad price.</div>
+    </div></div>`;
+}
+
+function oitem(o, isBest){
+  const t = o.liquidity || 'unknown';
+  return `<div class="item oc${isBest?' best':''}">
+    <img src="${o.image}" alt="" loading="lazy">
+    <div class="d">
+      <div class="n">${o.skin}<span class="tag t-${t}">${t}</span></div>
+      <div class="w">${o.wear} · ${o.p_pct}%</div>
+      <div class="f">float ${o.float.toFixed(4)}${o.min_float!=null
+        ? ` · cap ${o.min_float}–${o.max_float}` : ''}</div>
+      <div class="p">${money(o.net)}</div>
+    </div></div>`;
+}
+
+function shopping(inputs){
+  const g = {};
+  inputs.forEach(i=>{
+    const k = i.skin + '|' + i.quality;
+    (g[k] = g[k] || {...i, n:0}).n++;
+  });
+  return Object.values(g).map(i=>`<div class="item">
+    <img src="${i.image}" alt="" loading="lazy">
+    <div class="d">
+      <div class="n">${i.n}× ${i.skin}${i.quality==='Souvenir'
+        ? '<span class="tag sv">sv</span>':''}</div>
+      <div class="w">${i.collection}</div>
+      <div class="f">float ${i.float}${i.min_float!=null
+        ? ` · cap ${i.min_float}–${i.max_float}` : ''}</div>
+      <div class="p">${money(i.price)} ea · ${money(i.price*i.n)}</div>
+    </div></div>`).join('');
+}
+</script>
+</html>

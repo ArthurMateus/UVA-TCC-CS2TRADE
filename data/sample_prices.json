@@ -1,0 +1,652 @@
+{
+ "Sawed-Off | Sand Dashed (Factory New)": {
+  "lowest": 0.2,
+  "median": 0.22,
+  "volume": 613
+ },
+ "Souvenir Sawed-Off | Sand Dashed (Factory New)": {
+  "lowest": 0.13,
+  "median": 0.14,
+  "volume": 131
+ },
+ "Sawed-Off | Sand Dashed (Minimal Wear)": {
+  "lowest": 0.14,
+  "median": 0.15,
+  "volume": 641
+ },
+ "Souvenir Sawed-Off | Sand Dashed (Minimal Wear)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 143
+ },
+ "Sawed-Off | Sand Dashed (Field-Tested)": {
+  "lowest": 0.1,
+  "median": 0.11,
+  "volume": 668
+ },
+ "Souvenir Sawed-Off | Sand Dashed (Field-Tested)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 36
+ },
+ "Sawed-Off | Sand Dashed (Well-Worn)": {
+  "lowest": 0.08,
+  "median": 0.09,
+  "volume": 185
+ },
+ "Souvenir Sawed-Off | Sand Dashed (Well-Worn)": {
+  "lowest": 0.04,
+  "median": 0.04,
+  "volume": 189
+ },
+ "Sawed-Off | Sand Dashed (Battle-Scarred)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 649
+ },
+ "Souvenir Sawed-Off | Sand Dashed (Battle-Scarred)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 127
+ },
+ "P250 | Sand Dune (Factory New)": {
+  "lowest": 0.21,
+  "median": 0.23,
+  "volume": 670
+ },
+ "Souvenir P250 | Sand Dune (Factory New)": {
+  "lowest": 0.13,
+  "median": 0.14,
+  "volume": 171
+ },
+ "P250 | Sand Dune (Minimal Wear)": {
+  "lowest": 0.13,
+  "median": 0.14,
+  "volume": 581
+ },
+ "Souvenir P250 | Sand Dune (Minimal Wear)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 21
+ },
+ "P250 | Sand Dune (Field-Tested)": {
+  "lowest": 0.09,
+  "median": 0.1,
+  "volume": 287
+ },
+ "Souvenir P250 | Sand Dune (Field-Tested)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 130
+ },
+ "P250 | Sand Dune (Well-Worn)": {
+  "lowest": 0.08,
+  "median": 0.09,
+  "volume": 645
+ },
+ "Souvenir P250 | Sand Dune (Well-Worn)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 144
+ },
+ "P250 | Sand Dune (Battle-Scarred)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 341
+ },
+ "Souvenir P250 | Sand Dune (Battle-Scarred)": {
+  "lowest": 0.04,
+  "median": 0.04,
+  "volume": 181
+ },
+ "Nova | Predator (Factory New)": {
+  "lowest": 0.18,
+  "median": 0.2,
+  "volume": 710
+ },
+ "Souvenir Nova | Predator (Factory New)": {
+  "lowest": 0.09,
+  "median": 0.1,
+  "volume": 153
+ },
+ "Nova | Predator (Minimal Wear)": {
+  "lowest": 0.15,
+  "median": 0.17,
+  "volume": 900
+ },
+ "Souvenir Nova | Predator (Minimal Wear)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 77
+ },
+ "Nova | Predator (Field-Tested)": {
+  "lowest": 0.1,
+  "median": 0.11,
+  "volume": 275
+ },
+ "Souvenir Nova | Predator (Field-Tested)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 19
+ },
+ "Nova | Predator (Well-Worn)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 824
+ },
+ "Souvenir Nova | Predator (Well-Worn)": {
+  "lowest": 0.03,
+  "median": 0.03,
+  "volume": 39
+ },
+ "Nova | Predator (Battle-Scarred)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 435
+ },
+ "Souvenir Nova | Predator (Battle-Scarred)": {
+  "lowest": 0.03,
+  "median": 0.03,
+  "volume": 16
+ },
+ "MP9 | Sand Dashed (Factory New)": {
+  "lowest": 1.18,
+  "median": 1.3,
+  "volume": 40
+ },
+ "Souvenir MP9 | Sand Dashed (Factory New)": {
+  "lowest": 0.59,
+  "median": 0.65,
+  "volume": 25
+ },
+ "MP9 | Sand Dashed (Minimal Wear)": {
+  "lowest": 0.77,
+  "median": 0.85,
+  "volume": 765
+ },
+ "Souvenir MP9 | Sand Dashed (Minimal Wear)": {
+  "lowest": 0.42,
+  "median": 0.46,
+  "volume": 30
+ },
+ "MP9 | Sand Dashed (Field-Tested)": {
+  "lowest": 0.56,
+  "median": 0.62,
+  "volume": 243
+ },
+ "Souvenir MP9 | Sand Dashed (Field-Tested)": {
+  "lowest": 0.36,
+  "median": 0.4,
+  "volume": 81
+ },
+ "MP9 | Sand Dashed (Well-Worn)": {
+  "lowest": 0.43,
+  "median": 0.47,
+  "volume": 358
+ },
+ "Souvenir MP9 | Sand Dashed (Well-Worn)": {
+  "lowest": 0.23,
+  "median": 0.25,
+  "volume": 116
+ },
+ "MP9 | Sand Dashed (Battle-Scarred)": {
+  "lowest": 0.4,
+  "median": 0.44,
+  "volume": 160
+ },
+ "Souvenir MP9 | Sand Dashed (Battle-Scarred)": {
+  "lowest": 0.19,
+  "median": 0.21,
+  "volume": 192
+ },
+ "Glock-18 | Sand Dune (Factory New)": {
+  "lowest": 1.01,
+  "median": 1.11,
+  "volume": 101
+ },
+ "Souvenir Glock-18 | Sand Dune (Factory New)": {
+  "lowest": 0.57,
+  "median": 0.63,
+  "volume": 136
+ },
+ "Glock-18 | Sand Dune (Minimal Wear)": {
+  "lowest": 0.72,
+  "median": 0.79,
+  "volume": 612
+ },
+ "Souvenir Glock-18 | Sand Dune (Minimal Wear)": {
+  "lowest": 0.36,
+  "median": 0.4,
+  "volume": 142
+ },
+ "Glock-18 | Sand Dune (Field-Tested)": {
+  "lowest": 0.52,
+  "median": 0.57,
+  "volume": 789
+ },
+ "Souvenir Glock-18 | Sand Dune (Field-Tested)": {
+  "lowest": 0.33,
+  "median": 0.36,
+  "volume": 119
+ },
+ "Glock-18 | Sand Dune (Well-Worn)": {
+  "lowest": 0.45,
+  "median": 0.5,
+  "volume": 159
+ },
+ "Souvenir Glock-18 | Sand Dune (Well-Worn)": {
+  "lowest": 0.25,
+  "median": 0.28,
+  "volume": 66
+ },
+ "Glock-18 | Sand Dune (Battle-Scarred)": {
+  "lowest": 0.35,
+  "median": 0.39,
+  "volume": 862
+ },
+ "Souvenir Glock-18 | Sand Dune (Battle-Scarred)": {
+  "lowest": 0.21,
+  "median": 0.23,
+  "volume": 17
+ },
+ "AK-47 | Elite Build (Factory New)": {
+  "lowest": 11.31,
+  "median": 12.44,
+  "volume": 443
+ },
+ "Souvenir AK-47 | Elite Build (Factory New)": {
+  "lowest": 7.91,
+  "median": 8.7,
+  "volume": 166
+ },
+ "AK-47 | Elite Build (Minimal Wear)": {
+  "lowest": 8.64,
+  "median": 9.5,
+  "volume": 142
+ },
+ "Souvenir AK-47 | Elite Build (Minimal Wear)": {
+  "lowest": 3.98,
+  "median": 4.38,
+  "volume": 49
+ },
+ "AK-47 | Elite Build (Field-Tested)": {
+  "lowest": 5.66,
+  "median": 6.23,
+  "volume": 304
+ },
+ "Souvenir AK-47 | Elite Build (Field-Tested)": {
+  "lowest": 2.56,
+  "median": 2.82,
+  "volume": 168
+ },
+ "AK-47 | Elite Build (Well-Worn)": {
+  "lowest": 4.64,
+  "median": 5.1,
+  "volume": 343
+ },
+ "Souvenir AK-47 | Elite Build (Well-Worn)": {
+  "lowest": 2.54,
+  "median": 2.79,
+  "volume": 31
+ },
+ "AK-47 | Elite Build (Battle-Scarred)": {
+  "lowest": 3.86,
+  "median": 4.25,
+  "volume": 636
+ },
+ "Souvenir AK-47 | Elite Build (Battle-Scarred)": {
+  "lowest": 2.35,
+  "median": 2.59,
+  "volume": 15
+ },
+ "MAG-7 | Counter Terrace (Factory New)": {
+  "lowest": 0.18,
+  "median": 0.2,
+  "volume": 420
+ },
+ "Souvenir MAG-7 | Counter Terrace (Factory New)": {
+  "lowest": 0.11,
+  "median": 0.12,
+  "volume": 44
+ },
+ "MAG-7 | Counter Terrace (Minimal Wear)": {
+  "lowest": 0.14,
+  "median": 0.15,
+  "volume": 535
+ },
+ "Souvenir MAG-7 | Counter Terrace (Minimal Wear)": {
+  "lowest": 0.09,
+  "median": 0.1,
+  "volume": 46
+ },
+ "MAG-7 | Counter Terrace (Field-Tested)": {
+  "lowest": 0.1,
+  "median": 0.11,
+  "volume": 227
+ },
+ "Souvenir MAG-7 | Counter Terrace (Field-Tested)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 91
+ },
+ "MAG-7 | Counter Terrace (Well-Worn)": {
+  "lowest": 0.08,
+  "median": 0.09,
+  "volume": 877
+ },
+ "Souvenir MAG-7 | Counter Terrace (Well-Worn)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 197
+ },
+ "MAG-7 | Counter Terrace (Battle-Scarred)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 797
+ },
+ "Souvenir MAG-7 | Counter Terrace (Battle-Scarred)": {
+  "lowest": 0.04,
+  "median": 0.04,
+  "volume": 153
+ },
+ "PP-Bizon | Chalk (Factory New)": {
+  "lowest": 0.17,
+  "median": 0.19,
+  "volume": 437
+ },
+ "Souvenir PP-Bizon | Chalk (Factory New)": {
+  "lowest": 0.11,
+  "median": 0.12,
+  "volume": 166
+ },
+ "PP-Bizon | Chalk (Minimal Wear)": {
+  "lowest": 0.12,
+  "median": 0.13,
+  "volume": 88
+ },
+ "Souvenir PP-Bizon | Chalk (Minimal Wear)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 21
+ },
+ "PP-Bizon | Chalk (Field-Tested)": {
+  "lowest": 0.09,
+  "median": 0.1,
+  "volume": 301
+ },
+ "Souvenir PP-Bizon | Chalk (Field-Tested)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 192
+ },
+ "PP-Bizon | Chalk (Well-Worn)": {
+  "lowest": 0.07,
+  "median": 0.08,
+  "volume": 470
+ },
+ "Souvenir PP-Bizon | Chalk (Well-Worn)": {
+  "lowest": 0.05,
+  "median": 0.06,
+  "volume": 164
+ },
+ "PP-Bizon | Chalk (Battle-Scarred)": {
+  "lowest": 0.06,
+  "median": 0.07,
+  "volume": 572
+ },
+ "Souvenir PP-Bizon | Chalk (Battle-Scarred)": {
+  "lowest": 0.03,
+  "median": 0.03,
+  "volume": 196
+ },
+ "Five-SeveN | Kami (Factory New)": {
+  "lowest": 1.08,
+  "median": 1.19,
+  "volume": 169
+ },
+ "Souvenir Five-SeveN | Kami (Factory New)": {
+  "lowest": 0.55,
+  "median": 0.61,
+  "volume": 155
+ },
+ "Five-SeveN | Kami (Minimal Wear)": {
+  "lowest": 0.71,
+  "median": 0.78,
+  "volume": 670
+ },
+ "Souvenir Five-SeveN | Kami (Minimal Wear)": {
+  "lowest": 0.43,
+  "median": 0.47,
+  "volume": 83
+ },
+ "Five-SeveN | Kami (Field-Tested)": {
+  "lowest": 0.47,
+  "median": 0.52,
+  "volume": 248
+ },
+ "Souvenir Five-SeveN | Kami (Field-Tested)": {
+  "lowest": 0.3,
+  "median": 0.33,
+  "volume": 29
+ },
+ "Five-SeveN | Kami (Well-Worn)": {
+  "lowest": 0.38,
+  "median": 0.42,
+  "volume": 496
+ },
+ "Souvenir Five-SeveN | Kami (Well-Worn)": {
+  "lowest": 0.19,
+  "median": 0.21,
+  "volume": 23
+ },
+ "Five-SeveN | Kami (Battle-Scarred)": {
+  "lowest": 0.32,
+  "median": 0.35,
+  "volume": 417
+ },
+ "Souvenir Five-SeveN | Kami (Battle-Scarred)": {
+  "lowest": 0.19,
+  "median": 0.21,
+  "volume": 45
+ },
+ "UMP-45 | Corporal (Factory New)": {
+  "lowest": 0.91,
+  "median": 1.0,
+  "volume": 181
+ },
+ "Souvenir UMP-45 | Corporal (Factory New)": {
+  "lowest": 0.61,
+  "median": 0.67,
+  "volume": 96
+ },
+ "UMP-45 | Corporal (Minimal Wear)": {
+  "lowest": 0.71,
+  "median": 0.78,
+  "volume": 747
+ },
+ "Souvenir UMP-45 | Corporal (Minimal Wear)": {
+  "lowest": 0.41,
+  "median": 0.45,
+  "volume": 47
+ },
+ "UMP-45 | Corporal (Field-Tested)": {
+  "lowest": 0.5,
+  "median": 0.55,
+  "volume": 58
+ },
+ "Souvenir UMP-45 | Corporal (Field-Tested)": {
+  "lowest": 0.28,
+  "median": 0.31,
+  "volume": 103
+ },
+ "UMP-45 | Corporal (Well-Worn)": {
+  "lowest": 0.41,
+  "median": 0.45,
+  "volume": 74
+ },
+ "Souvenir UMP-45 | Corporal (Well-Worn)": {
+  "lowest": 0.19,
+  "median": 0.21,
+  "volume": 174
+ },
+ "UMP-45 | Corporal (Battle-Scarred)": {
+  "lowest": 0.32,
+  "median": 0.35,
+  "volume": 108
+ },
+ "Souvenir UMP-45 | Corporal (Battle-Scarred)": {
+  "lowest": 0.2,
+  "median": 0.22,
+  "volume": 93
+ },
+ "AWP | Corticera (Factory New)": {
+  "lowest": 10.02,
+  "median": 11.02,
+  "volume": 114
+ },
+ "Souvenir AWP | Corticera (Factory New)": {
+  "lowest": 4.7,
+  "median": 5.17,
+  "volume": 151
+ },
+ "AWP | Corticera (Minimal Wear)": {
+  "lowest": 7.36,
+  "median": 8.1,
+  "volume": 85
+ },
+ "Souvenir AWP | Corticera (Minimal Wear)": {
+  "lowest": 4.97,
+  "median": 5.47,
+  "volume": 200
+ },
+ "AWP | Corticera (Field-Tested)": {
+  "lowest": 5.66,
+  "median": 6.23,
+  "volume": 172
+ },
+ "Souvenir AWP | Corticera (Field-Tested)": {
+  "lowest": 3.67,
+  "median": 4.04,
+  "volume": 99
+ },
+ "AWP | Corticera (Well-Worn)": {
+  "lowest": 4.19,
+  "median": 4.61,
+  "volume": 741
+ },
+ "Souvenir AWP | Corticera (Well-Worn)": {
+  "lowest": 2.38,
+  "median": 2.62,
+  "volume": 31
+ },
+ "AWP | Corticera (Battle-Scarred)": {
+  "lowest": 4.06,
+  "median": 4.47,
+  "volume": 467
+ },
+ "Souvenir AWP | Corticera (Battle-Scarred)": {
+  "lowest": 2.79,
+  "median": 3.07,
+  "volume": 19
+ },
+ "MP7 | Cirrus (Factory New)": {
+  "lowest": 0.3,
+  "median": 0.33,
+  "volume": 626
+ },
+ "MP7 | Cirrus (Minimal Wear)": {
+  "lowest": 0.18,
+  "median": 0.2,
+  "volume": 718
+ },
+ "MP7 | Cirrus (Field-Tested)": {
+  "lowest": 0.14,
+  "median": 0.15,
+  "volume": 636
+ },
+ "MP7 | Cirrus (Well-Worn)": {
+  "lowest": 0.1,
+  "median": 0.11,
+  "volume": 113
+ },
+ "MP7 | Cirrus (Battle-Scarred)": {
+  "lowest": 0.09,
+  "median": 0.1,
+  "volume": 694
+ },
+ "Tec-9 | Snek (Factory New)": {
+  "lowest": 1.42,
+  "median": 1.56,
+  "volume": 303
+ },
+ "Tec-9 | Snek (Minimal Wear)": {
+  "lowest": 1.16,
+  "median": 1.28,
+  "volume": 785
+ },
+ "Tec-9 | Snek (Field-Tested)": {
+  "lowest": 0.74,
+  "median": 0.81,
+  "volume": 792
+ },
+ "Tec-9 | Snek (Well-Worn)": {
+  "lowest": 0.64,
+  "median": 0.7,
+  "volume": 508
+ },
+ "Tec-9 | Snek (Battle-Scarred)": {
+  "lowest": 0.53,
+  "median": 0.58,
+  "volume": 898
+ },
+ "Galil AR | Vandal (Factory New)": {
+  "lowest": 1.55,
+  "median": 1.71,
+  "volume": 571
+ },
+ "Galil AR | Vandal (Minimal Wear)": {
+  "lowest": 1.13,
+  "median": 1.24,
+  "volume": 70
+ },
+ "Galil AR | Vandal (Field-Tested)": {
+  "lowest": 0.74,
+  "median": 0.81,
+  "volume": 129
+ },
+ "Galil AR | Vandal (Well-Worn)": {
+  "lowest": 0.61,
+  "median": 0.67,
+  "volume": 275
+ },
+ "Galil AR | Vandal (Battle-Scarred)": {
+  "lowest": 0.59,
+  "median": 0.65,
+  "volume": 155
+ },
+ "M4A1-S | Cyrex (Factory New)": {
+  "lowest": 16.79,
+  "median": 18.47,
+  "volume": 669
+ },
+ "M4A1-S | Cyrex (Minimal Wear)": {
+  "lowest": 12.14,
+  "median": 13.35,
+  "volume": 537
+ },
+ "M4A1-S | Cyrex (Field-Tested)": {
+  "lowest": 7.99,
+  "median": 8.79,
+  "volume": 51
+ },
+ "M4A1-S | Cyrex (Well-Worn)": {
+  "lowest": 6.54,
+  "median": 7.19,
+  "volume": 186
+ },
+ "M4A1-S | Cyrex (Battle-Scarred)": {
+  "lowest": 6.09,
+  "median": 6.7,
+  "volume": 247
+ }
+}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/skins.json
+data/prices.sqlite
+data/price_snapshot.json
+results.json
+.venv/
+.pytest_cache/
