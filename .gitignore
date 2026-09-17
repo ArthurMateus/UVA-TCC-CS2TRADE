@@ -1,8 +1,25 @@
 __pycache__/
-*.pyc
-data/skins.json
-data/prices.sqlite
-data/price_snapshot.json
-results.json
+*.py[cod]
+*.egg-info/
+build/
+dist/
 .venv/
 .pytest_cache/
+.ruff_cache/
+
+# generated -- regenerate with sync-db / sync-images / warm
+data/skins.json
+data/images.json
+data/prices.sqlite
+data/price_snapshot.json
+data/adv_*.json
+results.json
+
+# bundled fixtures are TRACKED: the test suite imports them
+!data/sample_skins.json
+!data/sample_prices.json
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

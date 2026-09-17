@@ -1,24 +1,20 @@
 """Command line interface.
 
-Recommended order:
+    tradeup sync-db                       skin database
+    tradeup sync-images                   skin images
+    tradeup warm --rarity milspec         prices (adaptive, concurrent)
+    tradeup guaranteed --budget 200       contracts that cannot lose
+    tradeup scan --budget 200             ranked by chance of profit
+    tradeup serve                         web UI
 
-    python -m tradeup.cli sync-db
-    python -m tradeup.cli cooldown --currency BRL
-    python -m tradeup.cli bulk-warm --currency BRL
-    python -m tradeup.cli scan --budget 20 --rarity consumer --currency BRL
-
-ENCODING: two separate Windows hazards are handled here.
-1. Files -- every read/write pins `encoding="utf-8"`. Skin names contain
-   characters (CJK, TM, star) that cp1252 cannot represent.
-2. The console -- printing those same names to a cp1252 terminal raises
-   UnicodeEncodeError too. `_safe_console()` reconfigures stdout to UTF-8,
-   or falls back to character substitution when it cannot.
+Windows: skin names contain characters cp1252 cannot encode, so the console
+is reconfigured to UTF-8 at startup and every file write pins an encoding.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -27,22 +23,23 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .data.loader import DB_PATH, SkinDB, SyncError, sync_from_csgo_api
-from .engine import evaluate_contract, n_contracts_for_confidence, validate_contract
-from .models import InputItem, Rarity
-from .optimizer import contract_size, explain, robust_filter, search
-from .prices.bulk import BulkMarket
-from .prices.steam import PriceBook, SteamMarket
+from .data.loader import DB_PATH, SkinDB, SyncError, fetch_skins_payload, sync_from_csgo_api
+from .images import IMAGES_PATH, build_from_payload
+from .images import save as save_images
+from .models import Rarity
+from .optimizer import explain, search
+from .prices.fetcher import AsyncPriceFetcher
+from .prices.steam import CURRENCY, PriceBook, PriceCache
 from .pricing import PriceService, PricingPolicy
+from .risk import explain_guaranteed, find_guaranteed
 
 app = typer.Typer(add_completion=False, help="CS2 trade-up analysis toolkit")
 
 
-def _safe_console() -> Console:
-    """A Console that never dies on a legacy Windows code page."""
+def _console() -> Console:
     enc = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "")
     if enc not in ("utf8", "utf8mb4"):
-        try:  # Python 3.7+: retrofit the stream in place
+        try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
@@ -50,26 +47,20 @@ def _safe_console() -> Console:
     return Console()
 
 
-console = _safe_console()
+console = _console()
 
-RARITIES = {
-    "consumer": Rarity.CONSUMER, "industrial": Rarity.INDUSTRIAL,
-    "milspec": Rarity.MILSPEC, "mil-spec": Rarity.MILSPEC,
-    "restricted": Rarity.RESTRICTED, "classified": Rarity.CLASSIFIED,
-    "covert": Rarity.COVERT,
-}
-ALL_TIERS = (Rarity.CONSUMER, Rarity.INDUSTRIAL, Rarity.MILSPEC,
-             Rarity.RESTRICTED, Rarity.CLASSIFIED, Rarity.COVERT)
-
-
-def _price_service(offline, currency, ttl, policy) -> PriceService:
-    if offline:
-        return PriceService(PriceBook.load(offline), policy)
-    return PriceService(SteamMarket(currency=currency, ttl_hours=ttl), policy)
+RARITIES = {"consumer": Rarity.CONSUMER, "industrial": Rarity.INDUSTRIAL,
+            "milspec": Rarity.MILSPEC, "mil-spec": Rarity.MILSPEC,
+            "restricted": Rarity.RESTRICTED, "classified": Rarity.CLASSIFIED,
+            "covert": Rarity.COVERT}
+ALL = (Rarity.CONSUMER, Rarity.INDUSTRIAL, Rarity.MILSPEC,
+       Rarity.RESTRICTED, Rarity.CLASSIFIED, Rarity.COVERT)
+SNAPSHOT = Path("data/price_snapshot.json")
+CACHE = Path("data/prices.sqlite")
 
 
-def _tier_names(db: SkinDB, r: Rarity, souvenir: bool, include_outputs: bool) -> set[str]:
-    """Every market_hash_name a scan at `r` could need."""
+def tier_names(db: SkinDB, r: Rarity, souvenir: bool) -> set[str]:
+    """Every market_hash_name a scan at this tier can need."""
     names: set[str] = set()
     for s in (x for c in db.collections(r) for x in db.pool(c, r)):
         for w in s.reachable_wears():
@@ -77,448 +68,284 @@ def _tier_names(db: SkinDB, r: Rarity, souvenir: bool, include_outputs: bool) ->
             if souvenir and s.souvenir_capable:
                 names.add(s.market_hash_name(w, souvenir=True))
     nxt = r.next_tier()
-    if include_outputs and nxt:  # outputs are always normal quality
+    if nxt:                               # outputs are always normal quality
         for s in (x for c in db.collections(nxt) for x in db.pool(c, nxt)):
             for w in s.reachable_wears():
                 names.add(s.market_hash_name(w))
     return names
 
 
+def offline_service(policy: PricingPolicy) -> PriceService:
+    if not SNAPSHOT.exists():
+        console.print(f"[red]No {SNAPSHOT}. Run: tradeup warm --rarity milspec[/red]")
+        raise typer.Exit(1)
+    return PriceService(PriceBook.load(SNAPSHOT), policy)
+
+
 # ---------------------------------------------------------------------------
 @app.command("sync-db")
-def sync_db(
-    out: Path = typer.Option(DB_PATH, help="Where to write skins.json"),
-    url: Optional[str] = typer.Option(None, help="Override the source URL"),
-    from_file: Optional[Path] = typer.Option(
-        None, "--from-file", help="Parse a manually downloaded CSGO-API skins.json"),
-    timeout: float = typer.Option(60.0),
-):
-    """Download and normalize the public skin/collection database."""
+def sync_db(out: Path = typer.Option(DB_PATH), url: Optional[str] = None,
+            from_file: Optional[Path] = typer.Option(None, "--from-file"),
+            timeout: float = 60.0):
+    """Download and normalize the skin/collection database."""
     try:
         db = sync_from_csgo_api(url=url, timeout=timeout, from_file=from_file)
         p = db.save(out)
     except SyncError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
-    except UnicodeEncodeError as e:
-        console.print(f"[red]Encoding error writing {out}: {e}\n"
-                      "A text I/O call lost its encoding='utf-8'.[/red]")
-        raise typer.Exit(1)
     except OSError as e:
         console.print(f"[red]Could not write {out}: {e}[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[green]Saved {len(db)} skin/collection entries to {p}[/green]")
+    console.print(f"[green]Saved {len(db)} entries to {p}[/green]")
     t = Table(show_header=True, header_style="dim")
-    for c, j in (("Tier", "left"), ("Collections", "right"), ("Skins", "right"),
-                 ("Souvenir-capable", "right")):
-        t.add_column(c, justify=j)
-    for r in ALL_TIERS:
-        skins = [s for s in db.skins if s.rarity == r]
-        sv = sum(1 for s in skins if s.souvenir_capable)
-        t.add_row(r.label, str(len(db.tradeable_collections(r))),
-                  str(len(skins)), str(sv))
+    for c in ("Tier", "Collections", "Skins", "Souvenir-capable"):
+        t.add_column(c, justify="left" if c == "Tier" else "right")
+    for r in ALL:
+        sk = [s for s in db.skins if s.rarity == r]
+        t.add_row(r.label, str(len(db.tradeable_collections(r))), str(len(sk)),
+                  str(sum(1 for s in sk if s.souvenir_capable)))
     console.print(t)
-    console.print("[dim]Covert shows 0 collections: its outputs are knives/gloves, "
-                  "which live in a flat pool rather than a collection.[/dim]")
+    console.print("[dim]Covert shows 0: its outputs are knives/gloves, a flat "
+                  "pool rather than a collection.[/dim]")
     for w in db.quality_sanity():
         console.print(f"[yellow]Warning: {w}[/yellow]")
-    console.print("[dim]Souvenir-capable is derived from Souvenir Package crate "
-                  "membership. Run 'verify-souvenir' to confirm against the live "
-                  "market before trusting it.[/dim]")
 
 
-# ---------------------------------------------------------------------------
-@app.command("cooldown")
-def cooldown(
-    currency: str = "USD",
-    wait: bool = typer.Option(False, help="Poll until the ban clears"),
-    poll: float = typer.Option(300.0, help="Seconds between polls when waiting"),
-):
-    """Check whether this IP is currently rate limited by Steam.
-
-    The limit is per IP, not per account, and a ban can last many hours. It
-    also re-arms every time you hit it while banned, so hammering it keeps
-    you locked out. If this reports a ban, stop all requests and wait.
-    """
-    market = SteamMarket(currency=currency, rate=60, max_retries=1)
-    probe = "AK-47 | Elite Build (Field-Tested)"
+@app.command("sync-images")
+def sync_images(out: Path = typer.Option(IMAGES_PATH),
+                from_file: Optional[Path] = typer.Option(None, "--from-file")):
+    """Extract skin image URLs from the same payload as sync-db."""
     try:
-        while True:
-            t0 = time.monotonic()
-            try:
-                r = market.client.get(market.URL, params={
-                    "appid": 730, "currency": market.currency,
-                    "market_hash_name": probe})
-                dt = time.monotonic() - t0
-                if r.status_code == 200 and '"success":true' in r.text.lower():
-                    console.print(f"[green]OK -- not rate limited ({dt:.1f}s).[/green]")
-                    raise typer.Exit(0)
-                if r.status_code == 429:
-                    ra = r.headers.get("Retry-After")
-                    console.print(f"[red]429 -- this IP is rate limited"
-                                  f"{f' (Retry-After {ra}s)' if ra else ''}.[/red]")
-                    console.print("[yellow]Stop all requests. Every attempt while "
-                                  "banned can extend it. Bans commonly last hours; "
-                                  "a router reboot that changes your IP also clears "
-                                  "it.[/yellow]")
-                else:
-                    console.print(f"[yellow]HTTP {r.status_code} ({dt:.1f}s) -- "
-                                  "not a clean success.[/yellow]")
-            except typer.Exit:
-                raise
-            except Exception as e:
-                console.print(f"[red]{type(e).__name__}: {e}[/red]")
-            if not wait:
-                raise typer.Exit(1)
-            console.print(f"[dim]sleeping {poll:.0f}s...[/dim]")
-            time.sleep(poll)
-    finally:
-        market.close()
+        raw = (json.loads(Path(from_file).read_text(encoding="utf-8"))
+               if from_file else fetch_skins_payload())
+    except SyncError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    m = build_from_payload(raw)
+    if not m:
+        console.print("[yellow]No image URLs found -- schema may have changed.[/yellow]")
+        raise typer.Exit(1)
+    console.print(f"[green]Saved {len(m)} image URLs to {save_images(m, out)}[/green]")
 
 
 # ---------------------------------------------------------------------------
-@app.command("bulk-warm")
-def bulk_warm(
-    currency: str = "USD",
-    rarity: Optional[str] = typer.Option(
-        None, help="Only keep names for this tier (default: cache everything)"),
-    souvenir: bool = typer.Option(True, help="Include Souvenir variants when filtering"),
-    page_delay: float = typer.Option(6.0, help="Seconds between pages. Raise if 429s."),
-    max_pages: int = typer.Option(0, help="Stop after N pages (0 = all)"),
-    export: bool = typer.Option(True, help="Write data/price_snapshot.json at the end"),
-):
-    """Price the whole market in ~60 requests instead of ~5600.
+@app.command("warm")
+def warm(rarity: str = typer.Option("milspec"),
+         currency: str = "USD",
+         souvenir: bool = True,
+         concurrency: int = typer.Option(6, help="Parallel requests in flight"),
+         rate: float = typer.Option(20.0, help="Starting requests/min; it self-tunes"),
+         ttl: float = typer.Option(8.0, help="Hours before a quote is stale"),
+         limit: int = typer.Option(0, help="Stop after N names (0 = all)"),
+         export: bool = True):
+    """Fetch prices concurrently, with an adaptive rate limit.
 
-    Uses Steam's paginated market search (100 items per request) -- the same
-    endpoint the market web page calls -- rather than one-item-at-a-time
-    priceoverview. This is the recommended way to fill an empty cache.
+    The limiter starts conservative and speeds up while responses stay clean,
+    halving on a 429 (once per congestion window, not once per response). It
+    converges on the fastest rate Steam will actually tolerate instead of
+    alternating between too-slow and punished.
 
-    Caveat: bulk data has the lowest listing price and a LISTING COUNT, but
-    no true median and no 24h sales volume. Run `warm-prices` afterwards on
-    the handful of names in your shortlist to get precise figures.
-    """
-    wanted: Optional[set[str]] = None
-    if rarity:
-        db = SkinDB.load()
-        r = RARITIES[rarity.lower()]
-        wanted = _tier_names(db, r, souvenir, include_outputs=True)
-        console.print(f"Filtering to {len(wanted)} names for {r.label} "
-                      "(plus its output tier).")
-
-    market = BulkMarket(currency=currency, page_delay=page_delay)
-    console.print("[dim]Walking the CS2 market 100 items per request. "
-                  "Ctrl+C is safe - every page is committed as it arrives.[/dim]")
-    t0 = time.monotonic()
-    try:
-        market.sweep(wanted=wanted, max_pages=max_pages,
-                     progress=lambda m: console.print(f"[dim]{m}[/dim]"))
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted -- pages fetched so far are cached.[/yellow]")
-    finally:
-        market.close()
-
-    s = market.stats
-    t = Table(title=f"bulk-warm summary ({(time.monotonic()-t0)/60:.1f} min)")
-    t.add_column("Metric")
-    t.add_column("Count", justify="right")
-    for label, v in (("pages fetched", s.pages), ("items seen", s.items),
-                     ("quotes cached", s.written), ("rate limited", s.rate_limited),
-                     ("retries", s.retries), ("errors", s.errors)):
-        t.add_row(label, str(v))
-    console.print(t)
-    if s.rate_limited:
-        console.print(f"[yellow]Hit {s.rate_limited} rate limits. Re-run with "
-                      f"--page-delay {page_delay * 2:.0f}.[/yellow]")
-    if export:
-        n = market.cache.export(Path("data/price_snapshot.json"), market.currency)
-        console.print(f"[green]{n} quotes -> data/price_snapshot.json[/green]")
-    console.print("[dim]Bulk quotes have no median/volume. Run 'warm-prices' on "
-                  "your shortlist before committing money.[/dim]")
-
-
-# ---------------------------------------------------------------------------
-def _heartbeat(market, total, counter, stop) -> None:
-    """Render live progress from the client's own state, once a second."""
-    with console.status("") as st:
-        while not stop.is_set():
-            s = market.state
-            phase = s.phase
-            if phase in ("backoff", "throttling") and s.elapsed > 2:
-                phase = f"[yellow]{phase} {s.elapsed:.0f}s[/yellow]"
-            elif phase == "requesting" and s.elapsed > 10:
-                phase = f"[yellow]requesting {s.elapsed:.0f}s[/yellow]"
-            st.update(
-                f"[{counter['i']}/{total}] {phase} {s.detail} | "
-                f"cached={market.stats['hits'] + market.stats['empty']} "
-                f"new={market.stats['misses']} 429={market.stats['429s']} "
-                f"timeout={market.stats['timeouts']} err={market.stats['errors']} "
-                f"| {s.item[:44]}")
-            stop.wait(1.0)
-
-
-@app.command("warm-prices")
-def warm_prices(
-    rarity: str = typer.Option("restricted"),
-    currency: str = "USD",
-    ttl: float = 8.0,
-    include_outputs: bool = True,
-    souvenir: bool = typer.Option(True, help="Also fetch Souvenir input variants"),
-    rate: int = typer.Option(18, help="Requests per minute. Lower it if you see 429s."),
-    timeout: float = typer.Option(20.0, help="Per-request timeout in seconds"),
-    limit: int = typer.Option(0, help="Stop after N names (0 = all). Good for a test run."),
-    verbose: bool = typer.Option(False, help="Log every network fetch as it happens"),
-):
-    """Precise per-item prices (median + 24h volume) for one tier.
-
-    SLOW: one request per name. Prefer `bulk-warm` to fill an empty cache,
-    and use this only to confirm a shortlist before committing money.
+    Ctrl+C is safe: every quote is committed as it arrives.
     """
     db = SkinDB.load()
     r = RARITIES[rarity.lower()]
-    market = SteamMarket(currency=currency, ttl_hours=ttl, rate=rate, timeout=timeout)
-
-    ordered = sorted(_tier_names(db, r, souvenir, include_outputs))
+    cur = CURRENCY.get(currency.upper(), 1)
+    cache = PriceCache(CACHE)
+    names = sorted(tier_names(db, r, souvenir))
     if limit:
-        ordered = ordered[:limit]
+        names = names[:limit]
 
-    # Count what is genuinely missing so the ETA reflects real work
-    todo = [n for n in ordered
-            if market.cache.get(n, market.currency, market.ttl) is None
-            and not market.cache.is_known_miss(n, market.currency, market.miss_ttl)]
-    console.print(f"{len(ordered)} names; {len(ordered) - len(todo)} already cached, "
-                  f"{len(todo)} to fetch at {rate}/min "
-                  f"(~{len(todo)/max(rate,1):.0f} min). "
-                  "Ctrl+C is safe: progress is cached and resumes.")
+    f = AsyncPriceFetcher(cache, currency=cur, concurrency=concurrency,
+                          start_rate=rate, ttl_hours=ttl)
+    todo = f.pending(names)
+    console.print(f"{len(names)} names for {r.label}; {len(names)-len(todo)} cached, "
+                  f"[bold]{len(todo)}[/bold] to fetch. Ctrl+C is safe.")
     if not todo:
-        console.print("[green]Nothing to fetch -- cache is already complete.[/green]")
-
-    counter = {"i": 0}
-    stop = threading.Event()
-    hb = None
-    if not verbose:
-        hb = threading.Thread(target=_heartbeat,
-                              args=(market, len(ordered), counter, stop), daemon=True)
-        hb.start()
+        console.print("[green]Cache already complete.[/green]")
+        if export:
+            n = cache.export(SNAPSHOT, cur)
+            console.print(f"[green]{n} quotes -> {SNAPSHOT}[/green]")
+        return
 
     t0 = time.monotonic()
-    try:
-        for i, n in enumerate(ordered, 1):
-            counter["i"] = i
-            fresh = False
-            s0 = t0
-            if verbose:
-                fresh = (market.cache.get(n, market.currency, market.ttl) is None
-                         and not market.cache.is_known_miss(
-                             n, market.currency, market.miss_ttl))
-                if fresh:
-                    console.print(f"[dim][{i}/{len(ordered)}] fetching {n}[/dim]")
-                    s0 = time.monotonic()
-            market.get(n)
-            if verbose and fresh:
-                console.print(f"[dim]    done in {time.monotonic()-s0:.1f}s[/dim]")
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted -- everything fetched so far is "
-                      "cached. Re-run to resume.[/yellow]")
-    finally:
-        stop.set()
-        if hb:
-            hb.join(timeout=2)
+    with console.status("") as st:
+        def prog(s, msg):
+            st.update(f"{msg} · ok={s.ok} empty={s.empty} 429={s.rate_limited} "
+                      f"err={s.errors + s.timeouts}")
+        try:
+            asyncio.run(f.fetch(todo, prog))
+        except KeyboardInterrupt:
+            f.stop()
+            console.print("\n[yellow]Interrupted -- everything fetched is cached.[/yellow]")
 
+    s = f.stats
     mins = (time.monotonic() - t0) / 60
-    n_export = market.cache.export(Path("data/price_snapshot.json"), market.currency)
-    market.close()
-
-    t = Table(title=f"warm-prices summary ({mins:.1f} min)")
+    t = Table(title=f"warm summary ({mins:.1f} min)")
     t.add_column("Metric")
-    t.add_column("Count", justify="right")
-    for k, label in (("hits", "from cache"), ("misses", "fetched"),
-                     ("empty", "no listing"), ("429s", "rate limited"),
-                     ("timeouts", "timed out"), ("errors", "errors"),
-                     ("gave_up", "gave up after retries")):
-        t.add_row(label, str(market.stats[k]))
+    t.add_column("Value", justify="right")
+    for k, v in (("priced", s.ok), ("no listing", s.empty),
+                 ("already cached", s.cached), ("rate limited", s.rate_limited),
+                 ("timeouts", s.timeouts), ("errors", s.errors),
+                 ("breaker trips", f.breaker.trips),
+                 ("throughput", f"{s.per_min:.0f}/min"),
+                 ("final rate", f"{f.limiter.rate:.0f}/min")):
+        t.add_row(k, str(v))
     console.print(t)
-    console.print(f"[green]{n_export} quotes -> data/price_snapshot.json[/green]")
-    if market.stats["429s"] > max(market.stats["misses"], 1) * 0.05:
-        console.print(f"[yellow]Over 5% of fetches were rate limited. Re-run with "
-                      f"--rate {max(6, rate // 2)}, or use bulk-warm.[/yellow]")
+    if f.breaker.trips:
+        console.print("[yellow]The circuit breaker tripped: your IP was being "
+                      "limited hard. Re-run later, or lower --rate.[/yellow]")
+    if export:
+        n = cache.export(SNAPSHOT, cur)
+        console.print(f"[green]{n} quotes -> {SNAPSHOT}[/green]")
 
 
 # ---------------------------------------------------------------------------
-@app.command("verify-souvenir")
-def verify_souvenir(
-    rarity: str = typer.Option("consumer"),
-    currency: str = "USD",
-    offline: Optional[Path] = typer.Option(None, help="Use a price snapshot JSON"),
-    sample: int = typer.Option(40, help="How many skins to probe"),
-    rate: int = typer.Option(10),
-):
-    """Check whether 'Souvenir <skin>' listings actually exist on the market.
+@app.command("guaranteed")
+def guaranteed(budget: float = typer.Option(..., help="Max total input cost"),
+               rarity: str = "milspec",
+               currency: str = "USD",
+               souvenir: bool = True,
+               float_percentile: float = 0.15,
+               haircut: float = 0.03,
+               min_profit: float = 0.0,
+               min_input_volume: int = typer.Option(5, help="Min listings per input"),
+               top: int = 15,
+               json_out: Optional[Path] = None):
+    """Contracts where EVERY outcome beats the cost.
 
-    The skin database can only infer which finishes have a Souvenir variant.
-    This asks the market directly for a sample and reports the hit rate.
+    There is no losing roll in these -- only a smaller win. They exist
+    because input and output prices are set by different supply dynamics,
+    so a collection's cheapest next-tier skin can be worth more than ten of
+    its own unwanted inputs.
     """
     db = SkinDB.load()
     r = RARITIES[rarity.lower()]
-    policy = PricingPolicy(min_input_volume=1)
-    prices = (PriceService(PriceBook.load(offline), policy) if offline
-              else PriceService(SteamMarket(currency=currency, rate=rate), policy))
-
-    cands = [s for c in db.collections(r) for s in db.pool(c, r) if s.souvenir_capable]
-    if not cands:
-        console.print(f"[yellow]No {r.label} skin is marked Souvenir-capable.[/yellow]")
+    prices = offline_service(PricingPolicy(min_volume=1,
+                                           min_input_volume=min_input_volume,
+                                           haircut=haircut))
+    found = find_guaranteed(db, prices, r, budget=budget,
+                            float_percentile=float_percentile, souvenir=souvenir,
+                            haircut=haircut, min_profit=min_profit,
+                            progress=lambda m: None)
+    if not found:
+        console.print("[yellow]No guaranteed contracts at this budget.[/yellow]")
+        console.print("[dim]The cheapest outcome never covers 10 inputs. Try a "
+                      "different rarity, raise the budget, or use `scan` and "
+                      "accept some risk.[/dim]")
         raise typer.Exit(0)
 
-    probe = cands[:: max(1, len(cands) // max(sample, 1))][:sample]
-    console.print(f"Probing {len(probe)} of {len(cands)} Souvenir-capable "
-                  f"{r.label} skins...")
-
-    hit = miss = 0
-    t = Table(title="Souvenir listing check")
-    for c in ("Skin", "Wear", "Souvenir price", "Normal price"):
-        t.add_column(c, justify="left" if c == "Skin" else "right")
-    with console.status("") as st:
-        for i, s in enumerate(probe, 1):
-            wears = s.reachable_wears()
-            if not wears:
-                continue
-            wear = wears[len(wears) // 2]
-            sv = prices.buy_price(s, wear, souvenir=True)
-            nm = prices.buy_price(s, wear, souvenir=False)
-            if sv:
-                hit += 1
-                if hit <= 15:
-                    t.add_row(s.name[:38], wear, f"{sv:.2f}",
-                              f"{nm:.2f}" if nm else "-")
-            else:
-                miss += 1
-            st.update(f"[{i}/{len(probe)}] found={hit} missing={miss}")
-    if hit:
-        console.print(t)
-    pct = hit / max(hit + miss, 1)
-    console.print(f"[{'green' if pct > 0.5 else 'yellow'}]"
-                  f"{hit}/{hit+miss} ({pct:.0%}) had a real Souvenir listing.[/]")
-    if pct < 0.5:
-        console.print("[yellow]The Souvenir flag is over-reporting. Scans stay "
-                      "correct (unpriced units are skipped) but warm-prices "
-                      "wastes requests. Consider --no-souvenir.[/yellow]")
-
-
-# ---------------------------------------------------------------------------
-@app.command()
-def scan(
-    budget: float = typer.Option(..., help="Max total input cost per contract"),
-    rarity: str = typer.Option("restricted"),
-    currency: str = "USD",
-    offline: Optional[Path] = typer.Option(None, help="Use a price snapshot JSON"),
-    db_path: Optional[Path] = typer.Option(None),
-    odds: str = typer.Option("outcome_weighted", help="outcome_weighted | per_input"),
-    fee: Optional[float] = typer.Option(None, help="Marketplace fee, e.g. 0.02"),
-    stattrak: bool = False,
-    souvenir: bool = typer.Option(True, help="Allow Souvenir inputs (legal since 22 May 2026)"),
-    float_percentile: float = typer.Option(0.15, help="How good a float you can source"),
-    min_roi: float = typer.Option(1.05, help="1.05 = require +5% expected return"),
-    min_volume: int = typer.Option(3, help="Min 24h sales for an OUTPUT"),
-    min_input_volume: int = typer.Option(10, help="Min 24h sales for an INPUT"),
-    haircut: float = typer.Option(0.03, help="Assume you sell this much under median"),
-    robust: bool = typer.Option(True, help="Require profit under BOTH odds models"),
-    top: int = 15,
-    json_out: Optional[Path] = None,
-):
-    """Find the best trade-ups you can build for a given budget."""
-    db = SkinDB.load(db_path)
-    policy = PricingPolicy(min_volume=min_volume,
-                           min_input_volume=min_input_volume, haircut=haircut)
-    prices = _price_service(offline, currency, 8.0, policy)
-    r = RARITIES[rarity.lower()]
-
-    cands = search(db, prices, r, budget=budget, odds_model=odds, fee_rate=fee,
-                   stattrak=stattrak, souvenir=souvenir,
-                   float_percentile=float_percentile, min_roi=min_roi,
-                   top_n=top * 3,
-                   progress=lambda m: console.print(f"[dim]{m}[/dim]"))
-    if robust:
-        cands = robust_filter(cands, db, prices, fee_rate=fee)
-    cands = cands[:top]
-
-    if not cands:
-        console.print("[yellow]No candidate cleared the filters. Loosen --min-roi, "
-                      "raise --budget, or lower --min-input-volume.[/yellow]")
-        raise typer.Exit(0)
-
-    t = Table(title=f"Top trade-ups - {r.label} -> {r.next_tier().label} - "
-                    f"budget {budget:.2f} {currency}")
-    for c in ("#", "Target collection", "Filler", "k", "Sv", "Cost", "EV net",
-              "Profit", "ROI", "P(win)", "sd", "n*"):
-        t.add_column(c, justify="left" if c in ("Target collection", "Filler") else "right")
-    for i, c in enumerate(cands, 1):
-        res = c.result
-        t.add_row(str(i), c.target_collection[:32], (c.filler_collection or "-")[:20],
-                  str(c.k_target), str(res.n_souvenir_inputs),
-                  f"{res.cost:.2f}", f"{res.ev_net:.2f}",
-                  f"[{'green' if res.profit > 0 else 'red'}]{res.profit:+.2f}[/]",
-                  f"{res.roi*100:.1f}%", f"{res.profit_chance*100:.1f}%",
-                  f"{res.stddev:.2f}", str(n_contracts_for_confidence(res) or "-"))
+    t = Table(title=f"Guaranteed profit - {r.label} -> {r.next_tier().label} "
+                    f"- budget {budget:.2f} {currency}")
+    for c in ("#", "Collection", "Cost", "Worst", "Best", "Guaranteed", "Floor ROI"):
+        t.add_column(c, justify="left" if c == "Collection" else "right")
+    for i, g in enumerate(found[:top], 1):
+        t.add_row(str(i), g.collection[:34], f"{g.cost:.2f}",
+                  f"{g.worst_net:.2f}", f"{g.best_net:.2f}",
+                  f"[green]+{g.guaranteed_profit:.2f}[/green]",
+                  f"{g.guaranteed_roi*100:.0f}%")
     console.print(t)
-    console.print("[dim]Sv = Souvenir inputs. Attributes are stripped; the output "
-                  "is always normal quality. n* = contracts needed before the edge "
-                  "beats the noise.[/dim]")
+    console.print("[dim]Guaranteed = the WORST outcome still profits. "
+                  "Floor ROI is the return on the worst roll.[/dim]")
 
-    best = cands[0].result
-    d = Table(title="Best recipe - outcome breakdown")
-    for c in ("Output", "Wear", "Float", "P", "Gross", "Net"):
-        d.add_column(c)
-    for o in best.outcomes:
-        d.add_row(o.skin.name, o.wear, f"{o.out_float:.4f}",
-                  f"{o.probability*100:.2f}%", f"{o.gross_price:.2f}",
-                  f"{o.net_price:.2f}" + ("" if o.priced else " [red](no data)[/red]"))
+    best = found[0]
+    e = explain_guaranteed(best)
+    i = e["inputs"][0]
+    console.print(f"\n[bold]{best.collection}[/bold]")
+    console.print(f"Buy {i['count']}x [cyan]{i['skin']}[/cyan] ({i['wear']}) "
+                  f"@ {i['price']:.2f} = {e['cost']:.2f}   "
+                  f"float cap {i['min_float']}-{i['max_float']}")
+    d = Table(show_header=True, header_style="dim")
+    for c in ("Outcome", "Wear", "Float", "Chance", "Net", "Profit"):
+        d.add_column(c, justify="left" if c == "Outcome" else "right")
+    for o in e["outcomes"]:
+        d.add_row(o["skin"][:32], o["wear"], f"{o['float']:.4f}",
+                  f"{o['p_pct']:.1f}%", f"{o['net']:.2f}",
+                  f"[green]+{o['net']-e['cost']:.2f}[/green]")
     console.print(d)
-    console.print("Shopping list: " + ", ".join(
-        f"{'Souvenir ' if i.souvenir else ''}{i.skin.name} "
-        f"({'%.4f' % i.float_value}) @{i.price:.2f}" for i in best.inputs))
 
     if json_out:
         Path(json_out).write_text(
-            json.dumps([explain(c) for c in cands], indent=2, ensure_ascii=False),
-            encoding="utf-8")
+            json.dumps([explain_guaranteed(g) for g in found[:top]],
+                       indent=2, ensure_ascii=False), encoding="utf-8")
         console.print(f"[green]Wrote {json_out}[/green]")
 
 
-# ---------------------------------------------------------------------------
-@app.command("eval")
-def eval_recipe(
-    recipe: Path = typer.Argument(
-        ..., help="JSON: [{name, collection, float, price, souvenir}, ...]"),
-    offline: Optional[Path] = None,
-    currency: str = "USD",
-    odds: str = "outcome_weighted",
-    fee: Optional[float] = None,
-    stattrak: bool = False,
-):
-    """Score a hand-built contract."""
+@app.command("scan")
+def scan(budget: float = typer.Option(...),
+         rarity: str = "milspec",
+         currency: str = "USD",
+         odds: str = typer.Option("per_input", help="per_input | outcome_weighted"),
+         fee: Optional[float] = typer.Option(None, help="Omit for Steam's 13%"),
+         souvenir: bool = True,
+         float_percentile: float = 0.15,
+         min_win_chance: float = typer.Option(50.0, help="Percent. The key filter."),
+         min_roi: float = 105.0,
+         min_volume: int = 3,
+         min_input_volume: int = 5,
+         haircut: float = 0.03,
+         sort: str = typer.Option("win", help="win|safety|profit|roi|ev|cost"),
+         top: int = 15,
+         json_out: Optional[Path] = None):
+    """Ranked search, filtered on chance of profit.
+
+    Defaults deliberately reject lottery tickets: a contract with a 3% chance
+    of a big payout is only rational if you can run it hundreds of times.
+    Set --min-win-chance 0 to see everything.
+    """
     db = SkinDB.load()
-    prices = _price_service(offline, currency, 8.0, PricingPolicy())
-    items = json.loads(Path(recipe).read_text(encoding="utf-8"))
-    inputs = []
-    for it in items:
-        sid = f"{it['name']}|{it.get('collection')}"
-        skin = db.by_id(sid) or db.by_name(it["name"])
-        if skin is None:
-            raise typer.BadParameter(f"Unknown skin: {sid}")
-        inputs.append(InputItem(skin, float(it["float"]), float(it.get("price", 0)),
-                                stattrak, bool(it.get("souvenir", False))))
-    for p in validate_contract(inputs):
-        console.print(f"[yellow]Rule warning: {p}[/yellow]")
-    need = contract_size(inputs[0].skin.rarity)
-    if len(inputs) != need:
-        console.print(f"[yellow]Warning: {len(inputs)} inputs, "
-                      f"contract expects {need}[/yellow]")
-    res = evaluate_contract(inputs, db.pool, prices.price_fn(), odds_model=odds,
-                            fee_rate=fee, stattrak=stattrak, skin_by_id=db.by_id)
-    payload = explain(type("C", (), {
-        "result": res, "target_collection": inputs[0].skin.collection,
-        "filler_collection": None, "k_target": len(inputs)})())
-    console.print_json(json.dumps(payload, indent=2, ensure_ascii=False))
+    r = RARITIES[rarity.lower()]
+    prices = offline_service(PricingPolicy(min_volume=min_volume,
+                                           min_input_volume=min_input_volume,
+                                           haircut=haircut))
+    cands = search(db, prices, r, budget=budget, odds_model=odds, fee_rate=fee,
+                   souvenir=souvenir, float_percentile=float_percentile,
+                   min_roi=min_roi/100.0, min_win_chance=min_win_chance/100.0,
+                   top_n=top*4,
+                   progress=lambda m: console.print(f"[dim]{m}[/dim]"))
+    if not cands:
+        console.print("[yellow]Nothing cleared the filters.[/yellow]")
+        console.print("[dim]Lower --min-win-chance, raise --budget, or try "
+                      "`tradeup guaranteed` for zero-risk contracts.[/dim]")
+        raise typer.Exit(0)
+
+    rows = [explain(c) for c in cands]
+    keys = {"win": "win_chance_pct", "safety": "guaranteed_profit",
+            "profit": "profit", "roi": "roi_pct", "ev": "ev_net", "cost": "cost"}
+    rows.sort(key=lambda x: x.get(keys.get(sort, "win_chance_pct"), 0),
+              reverse=(sort != "cost"))
+
+    t = Table(title=f"{r.label} -> {r.next_tier().label} - budget {budget:.2f} {currency}")
+    for c in ("#", "Collection", "Grade", "Cost", "P(win)", "Worst", "Profit", "ROI"):
+        t.add_column(c, justify="left" if c in ("Collection", "Grade") else "right")
+    colour = {"guaranteed": "green", "strong": "cyan", "even": "yellow",
+              "risky": "red", "lottery": "bold red"}
+    for i, x in enumerate(rows[:top], 1):
+        g = x["grade"]
+        worst = -x["worst_loss"] if x["worst_loss"] > 0 else x["guaranteed_profit"]
+        t.add_row(str(i), x["target_collection"][:26],
+                  f"[{colour.get(g,'white')}]{g}[/]",
+                  f"{x['cost']:.2f}", f"{x['win_chance_pct']:.0f}%",
+                  f"{worst:+.2f}",
+                  f"[{'green' if x['profit']>0 else 'red'}]{x['profit']:+.2f}[/]",
+                  f"{x['roi_pct']:.0f}%")
+    console.print(t)
+    console.print("[dim]Worst = what you get on the worst roll, relative to cost. "
+                  "Grade is based on P(win), not EV.[/dim]")
+
+    if json_out:
+        Path(json_out).write_text(json.dumps(rows[:top], indent=2, ensure_ascii=False),
+                                  encoding="utf-8")
+        console.print(f"[green]Wrote {json_out}[/green]")
+
+
+@app.command("serve")
+def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False):
+    """Start the web UI."""
+    import uvicorn
+    console.print(f"[green]http://{host}:{port}[/green]")
+    uvicorn.run("tradeup.web:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":

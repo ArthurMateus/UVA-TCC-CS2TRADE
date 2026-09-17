@@ -1,18 +1,19 @@
-"""Trade-up browser: the same engine, served as a web UI.
+"""Trade-up browser: risk-first web UI.
 
-    uvicorn tradeup.web:app --reload
-    -> http://localhost:8000
+    uvicorn tradeup.web:app --reload      ->  http://localhost:8000
 
-Point it at real prices first, or it serves the fabricated sample data:
+Nothing here re-implements maths. It calls `risk.find_guaranteed()` and
+`optimizer.search()` exactly as the CLI does, so screen and terminal agree.
 
-    $env:TRADEUP_PRICE_SNAPSHOT="data/price_snapshot.json"
+Two modes, exposed as a top-level toggle because they answer different
+questions:
 
-Nothing here re-implements the maths. It calls `optimizer.search()` and
-`liquidity.assess()` exactly as the CLI does, so the numbers on screen are
-the numbers the CLI prints.
+  GUARANTEED  only contracts where EVERY outcome beats the cost.
+              Closed-form, ~3 ms, no combinatorics.
+  RANKED      the general search, filtered and sorted on P(win) first.
 
-Results are cached per filter-set, because a scan over 86 collections takes
-a few seconds and the budget slider would otherwise re-run it constantly.
+Scans are cached per parameter set so moving the budget slider does not
+re-run an expensive search on every keystroke.
 """
 from __future__ import annotations
 
@@ -30,174 +31,93 @@ from .data.loader import SkinDB
 from .images import ImageIndex
 from .models import Rarity
 from .optimizer import explain, search
-from .prices.steam import PriceBook, SteamMarket
+from .prices.steam import PriceBook, PriceCache
 from .pricing import PriceService, PricingPolicy
-
-try:
-    from .liquidity import LiquidityPolicy, assess, breakeven_realization
-    HAVE_LIQUIDITY = True
-except ImportError:      # liquidity.py not installed yet
-    HAVE_LIQUIDITY = False
+from .risk import explain_guaranteed, find_guaranteed
 
 app = FastAPI(title="CS2 Trade-Up Browser", version="2.0")
 
-SNAPSHOT = Path(os.getenv("TRADEUP_PRICE_SNAPSHOT", "data/sample_prices.json"))
-CACHE_PATH = Path(os.getenv("TRADEUP_CACHE", "data/prices.sqlite"))
+SNAPSHOT = Path(os.getenv("TRADEUP_PRICE_SNAPSHOT", "data/price_snapshot.json"))
+CACHE_DB = Path(os.getenv("TRADEUP_CACHE", "data/prices.sqlite"))
+SKINS_DB = os.getenv("TRADEUP_SKINS")
 
-RARITIES = {
-    "consumer": Rarity.CONSUMER, "industrial": Rarity.INDUSTRIAL,
-    "milspec": Rarity.MILSPEC, "restricted": Rarity.RESTRICTED,
-    "classified": Rarity.CLASSIFIED, "covert": Rarity.COVERT,
-}
-
-CURRENCY_SYMBOL = {"USD": "$", "BRL": "R$", "EUR": "\u20ac", "GBP": "\u00a3",
-                   "RUB": "\u20bd", "CNY": "\u00a5"}
+RARITIES = {"consumer": Rarity.CONSUMER, "industrial": Rarity.INDUSTRIAL,
+            "milspec": Rarity.MILSPEC, "restricted": Rarity.RESTRICTED,
+            "classified": Rarity.CLASSIFIED, "covert": Rarity.COVERT}
+CUR_ID = {"USD": 1, "GBP": 2, "EUR": 3, "BRL": 7, "RUB": 5, "CNY": 23}
+SYMBOL = {"USD": "$", "BRL": "R$", "EUR": "\u20ac", "GBP": "\u00a3",
+          "RUB": "\u20bd", "CNY": "\u00a5"}
 
 _db: Optional[SkinDB] = None
-_images: Optional[ImageIndex] = None
-_scan_cache: dict[str, tuple[float, list]] = {}
-SCAN_TTL = 600.0
+_img: Optional[ImageIndex] = None
+_cache: dict[str, tuple[float, list]] = {}
+TTL = 600.0
 
 
 def db() -> SkinDB:
     global _db
     if _db is None:
-        _db = SkinDB.load()
+        _db = SkinDB.load(SKINS_DB)
     return _db
 
 
-def images() -> ImageIndex:
-    global _images
-    if _images is None:
-        _images = ImageIndex.load()
-    return _images
+def img() -> ImageIndex:
+    global _img
+    if _img is None:
+        _img = ImageIndex.load()
+    return _img
 
 
-def price_service(policy: PricingPolicy, currency: str) -> PriceService:
-    if SNAPSHOT.exists():
-        return PriceService(PriceBook.load(SNAPSHOT), policy)
-    return PriceService(SteamMarket(currency=currency), policy)
+def svc(policy: PricingPolicy, currency: str) -> PriceService:
+    if not SNAPSHOT.exists():
+        raise HTTPException(
+            503, f"No price snapshot at {SNAPSHOT}. Run: tradeup warm --rarity milspec")
+    return PriceService(PriceBook.load(SNAPSHOT), policy)
 
 
-# ---------------------------------------------------------------------------
-def depth_map(names: set[str], currency: int) -> dict[str, tuple]:
-    """market_hash_name -> (sell_listings, 24h_volume) straight from cache.
-
-    With bulk data the `volume` column holds SELL LISTINGS (supply). Once
-    warm-prices has run, `median` is set and the same column is real 24h
-    sales. The two are distinguished here so the liquidity model can weight
-    them correctly.
-    """
-    import sqlite3
-
-    out: dict[str, tuple] = {}
-    if not CACHE_PATH.exists() or not names:
-        return out
-    conn = sqlite3.connect(str(CACHE_PATH))
+def depth_for(names: set[str], currency: str) -> dict:
+    if not CACHE_DB.exists() or not names:
+        return {}
     try:
-        qs = list(names)
-        for i in range(0, len(qs), 400):
-            chunk = qs[i:i + 400]
-            marks = ",".join("?" * len(chunk))
-            for nm, vol, med in conn.execute(
-                    f"SELECT name, volume, median FROM prices "
-                    f"WHERE currency=? AND name IN ({marks})",
-                    [currency, *chunk]):
-                out[nm] = (None, vol) if med is not None else (vol, None)
+        return PriceCache(CACHE_DB).depth(names, CUR_ID.get(currency.upper(), 1))
     except Exception:
-        pass
-    finally:
-        conn.close()
-    return out
+        return {}
 
 
-CUR_ID = {"USD": 1, "GBP": 2, "EUR": 3, "BRL": 7, "RUB": 5, "CNY": 23}
-
-
-def run_scan(p: dict[str, Any]) -> list[dict]:
-    key = hashlib.md5(json.dumps(p, sort_keys=True).encode()).hexdigest()
-    hit = _scan_cache.get(key)
-    if hit and time.time() - hit[0] < SCAN_TTL:
-        return hit[1]
-
-    d = db()
-    r = RARITIES[p["rarity"]]
-    policy = PricingPolicy(min_volume=p["min_volume"],
-                           min_input_volume=p["min_input_volume"],
-                           haircut=p["haircut"])
-    prices = price_service(policy, p["currency"])
-
-    cands = search(d, prices, r,
-                   budget=p["budget"],
-                   odds_model=p["odds"],
-                   fee_rate=p["fee_rate"],
-                   souvenir=p["souvenir"],
-                   float_percentile=p["float_percentile"],
-                   min_roi=0.0,               # filter later, in the UI
-                   top_n=400)
-
-    rows = [explain(c) for c in cands]
-    img = images()
-    cur = CUR_ID.get(p["currency"].upper(), 1)
-
-    # attach float caps, images and liquidity
+def decorate(rows: list[dict], currency: str) -> list[dict]:
+    """Attach float caps, images and market depth to every row."""
+    d, images = db(), img()
     want: set[str] = set()
-    for row in rows:
-        for o in row["outcomes"]:
+    for r in rows:
+        for o in r["outcomes"]:
             want.add(f"{o['skin']} ({o['wear']})")
-    depth = depth_map(want, cur)
-    pol = LiquidityPolicy() if HAVE_LIQUIDITY else None
+    depth = depth_for(want, currency)
 
-    for row in rows:
-        for o in row["outcomes"]:
+    for r in rows:
+        for o in r["outcomes"]:
             s = d.by_name(o["skin"])
-            o["min_float"] = round(s.min_float, 4) if s else None
-            o["max_float"] = round(s.max_float, 4) if s else None
-            o["image"] = img.get(o["skin"])
-            nm = f"{o['skin']} ({o['wear']})"
-            listings, vol = depth.get(nm, (None, None))
-            o["listings"] = listings
-            o["volume24"] = vol
-            if pol:
-                o["liquidity"] = pol.tier(listings, vol).label
-        for i in row["inputs"]:
+            if s is not None:
+                o.setdefault("min_float", round(s.min_float, 4))
+                o.setdefault("max_float", round(s.max_float, 4))
+            o["image"] = images.get(o["skin"])
+            listings, vol = depth.get(f"{o['skin']} ({o['wear']})", (None, None))
+            o["listings"], o["volume24"] = listings, vol
+        for i in r["inputs"]:
             s = d.by_name(i["skin"])
-            i["min_float"] = round(s.min_float, 4) if s else None
-            i["max_float"] = round(s.max_float, 4) if s else None
-            i["image"] = img.get(i["skin"])
+            if s is not None:
+                i.setdefault("min_float", round(s.min_float, 4))
+                i.setdefault("max_float", round(s.max_float, 4))
+            i["image"] = images.get(i["skin"])
+    return rows
 
-        if HAVE_LIQUIDITY:
-            class _O:  # tiny shim so assess() can read the dicts
-                __slots__ = ("skin", "probability", "wear", "net_price")
 
-                def __init__(self, o):
-                    self.skin = type("S", (), {
-                        "market_hash_name": staticmethod(
-                            lambda w, st=False, sv=False, n=o["skin"]: f"{n} ({w})")})
-                    self.probability = o["p_pct"] / 100.0
-                    self.wear = o["wear"]
-                    self.net_price = o["net"]
-
-            shim = [_O(o) for o in row["outcomes"]]
-            rep = assess(shim, pol, depth, row["cost"])
-            row["ev_adjusted"] = round(rep.ev_adjusted, 2)
-            row["profit_adjusted"] = round(rep.profit_adjusted, 2)
-            row["roi_adjusted_pct"] = round(rep.roi_adjusted * 100, 2)
-            row["top_ev_share_pct"] = round(rep.top_ev_share * 100, 1)
-            row["top_outcome"] = rep.top_outcome
-            row["concentrated"] = rep.concentrated
-            row["worst_liquidity"] = rep.worst_tier.label
-            row["warnings"] = rep.warnings()
-            be = breakeven_realization(shim, row["cost"], rep.top_outcome)
-            row["breakeven_pct"] = round(be * 100, 1) if be else None
-        else:
-            row["ev_adjusted"] = row["ev_net"]
-            row["profit_adjusted"] = row["profit"]
-            row["roi_adjusted_pct"] = row["roi_pct"]
-            row["warnings"] = []
-            row["concentrated"] = False
-
-    _scan_cache[key] = (time.time(), rows)
+def cached(key: dict, build) -> list[dict]:
+    k = hashlib.md5(json.dumps(key, sort_keys=True).encode()).hexdigest()
+    hit = _cache.get(k)
+    if hit and time.time() - hit[0] < TTL:
+        return hit[1]
+    rows = build()
+    _cache[k] = (time.time(), rows)
     return rows
 
 
@@ -207,18 +127,49 @@ def meta():
     d = db()
     return {
         "skins": len(d),
-        "images": len(images()),
+        "images": len(img()),
         "snapshot": str(SNAPSHOT),
         "snapshot_exists": SNAPSHOT.exists(),
-        "liquidity": HAVE_LIQUIDITY,
-        "tiers": [
-            {"key": k, "label": v.label,
-             "collections": len(d.tradeable_collections(v)),
-             "outputs": len(d.tradeable_collections(v.next_tier()))
-                        if v.next_tier() else 0}
-            for k, v in RARITIES.items() if v.next_tier()
-        ],
+        "cache_exists": CACHE_DB.exists(),
+        "warnings": d.quality_sanity(),
+        "tiers": [{"key": k, "label": v.label,
+                   "collections": len(d.tradeable_collections(v))}
+                  for k, v in RARITIES.items() if v.next_tier()],
     }
+
+
+@app.get("/api/guaranteed")
+def api_guaranteed(
+    budget: float = Query(200.0, gt=0),
+    rarity: str = "milspec",
+    currency: str = "BRL",
+    souvenir: bool = True,
+    float_percentile: float = 0.15,
+    haircut: float = 0.03,
+    min_profit: float = 0.0,
+    min_input_volume: int = 5,
+    top: int = 20,
+):
+    """Contracts where the WORST outcome still beats the cost."""
+    if rarity not in RARITIES:
+        raise HTTPException(400, f"bad rarity: {rarity}")
+
+    def build():
+        prices = svc(PricingPolicy(min_volume=1,
+                                   min_input_volume=min_input_volume,
+                                   haircut=haircut), currency)
+        found = find_guaranteed(
+            db(), prices, RARITIES[rarity], budget=budget,
+            float_percentile=float_percentile, souvenir=souvenir,
+            haircut=haircut, min_profit=min_profit)
+        return decorate([explain_guaranteed(r) for r in found], currency)
+
+    rows = cached({"m": "g", "b": budget, "r": rarity, "c": currency,
+                   "s": souvenir, "f": float_percentile, "h": haircut,
+                   "p": min_profit, "v": min_input_volume}, build)
+    return {"mode": "guaranteed", "count": len(rows),
+            "currency": currency, "symbol": SYMBOL.get(currency.upper(), ""),
+            "results": rows[:top]}
 
 
 @app.get("/api/scan")
@@ -226,66 +177,55 @@ def api_scan(
     budget: float = Query(200.0, gt=0),
     rarity: str = "milspec",
     currency: str = "BRL",
-    fee_rate: Optional[float] = Query(None, description="blank = exact Steam model"),
+    fee_rate: Optional[float] = None,
     souvenir: bool = True,
     float_percentile: float = 0.15,
     min_volume: int = 3,
-    min_input_volume: int = 10,
+    min_input_volume: int = 5,
     haircut: float = 0.03,
     odds: Literal["per_input", "outcome_weighted"] = "per_input",
-    # UI-side filters
-    min_roi: float = 100.0,
+    min_win_chance: float = 50.0,
+    min_roi: float = 105.0,
     min_profit: float = 0.0,
     max_cost: Optional[float] = None,
-    liquidity: Literal["any", "ok", "deep"] = "any",
-    hide_concentrated: bool = False,
-    sort: Literal["profit", "roi", "ev", "cost", "safety"] = "profit",
-    adjusted: bool = True,
+    sort: Literal["win", "profit", "roi", "safety", "cost", "ev"] = "win",
     top: int = 20,
 ):
+    """General search. Defaults filter and sort on P(win), not EV."""
     if rarity not in RARITIES:
         raise HTTPException(400, f"bad rarity: {rarity}")
 
-    rows = run_scan({
-        "budget": budget, "rarity": rarity, "currency": currency,
-        "fee_rate": fee_rate, "souvenir": souvenir,
-        "float_percentile": float_percentile, "min_volume": min_volume,
-        "min_input_volume": min_input_volume, "haircut": haircut, "odds": odds,
-    })
+    def build():
+        prices = svc(PricingPolicy(min_volume=min_volume,
+                                   min_input_volume=min_input_volume,
+                                   haircut=haircut), currency)
+        cands = search(db(), prices, RARITIES[rarity], budget=budget,
+                       odds_model=odds, fee_rate=fee_rate, souvenir=souvenir,
+                       float_percentile=float_percentile,
+                       min_roi=1.0, min_win_chance=0.0, top_n=600)
+        return decorate([explain(c) for c in cands], currency)
 
-    pk = "profit_adjusted" if adjusted else "profit"
-    rk = "roi_adjusted_pct" if adjusted else "roi_pct"
-    ek = "ev_adjusted" if adjusted else "ev_net"
+    rows = cached({"m": "s", "b": budget, "r": rarity, "c": currency,
+                   "fe": fee_rate, "s": souvenir, "f": float_percentile,
+                   "mv": min_volume, "mi": min_input_volume, "h": haircut,
+                   "o": odds}, build)
 
-    out = []
-    rank = {"dead": 0, "thin": 1, "ok": 2, "deep": 3, "unknown": 0}
-    for r in rows:
-        if r[rk] < min_roi or r[pk] < min_profit:
-            continue
-        if max_cost is not None and r["cost"] > max_cost:
-            continue
-        if hide_concentrated and r.get("concentrated"):
-            continue
-        if liquidity != "any":
-            need = rank["ok"] if liquidity == "ok" else rank["deep"]
-            if rank.get(r.get("worst_liquidity", "unknown"), 0) < need:
-                continue
-        out.append(r)
+    out = [r for r in rows
+           if r["win_chance_pct"] >= min_win_chance
+           and r["roi_pct"] >= min_roi
+           and r["profit"] >= min_profit
+           and (max_cost is None or r["cost"] <= max_cost)]
 
-    keys = {"profit": pk, "roi": rk, "ev": ek, "cost": "cost",
-            "safety": "profit_chance_pct"}
-    rev = sort != "cost"
-    out.sort(key=lambda r: r.get(keys[sort], 0), reverse=rev)
+    keys = {"win": ("win_chance_pct", "profit"), "profit": ("profit", "win_chance_pct"),
+            "roi": ("roi_pct", "win_chance_pct"), "ev": ("ev_net", "win_chance_pct"),
+            "safety": ("guaranteed_profit", "win_chance_pct"),
+            "cost": ("cost", "win_chance_pct")}
+    a, b = keys[sort]
+    out.sort(key=lambda r: (r.get(a, 0), r.get(b, 0)), reverse=(sort != "cost"))
 
-    return {
-        "count": len(out),
-        "scanned": len(rows),
-        "currency": currency,
-        "symbol": CURRENCY_SYMBOL.get(currency.upper(), ""),
-        "adjusted": adjusted and HAVE_LIQUIDITY,
-        "liquidity_available": HAVE_LIQUIDITY,
-        "results": out[:top],
-    }
+    return {"mode": "ranked", "count": len(out), "scanned": len(rows),
+            "currency": currency, "symbol": SYMBOL.get(currency.upper(), ""),
+            "results": out[:top]}
 
 
 @app.get("/", response_class=HTMLResponse)

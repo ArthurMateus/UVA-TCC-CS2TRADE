@@ -1,203 +1,222 @@
 # CS2 Trade-Up Lab
 
-A free, self-hosted trade-up analysis engine for Counter-Strike 2. It pulls
-live Steam Community Market prices, computes the exact output float, the
-outcome probability distribution, and the fee-adjusted expected value of a
-contract — then searches for the best recipes you can afford on a budget.
-
-No API key, no subscription. The only rate limit is Steam's, and the price
-layer is built around not tripping it.
-
----
-
-## Quick start
+A free, self-hosted trade-up analysis engine for Counter-Strike 2. It finds
+contracts where **every outcome beats the cost** — not lottery tickets with a
+3% chance of a payout.
 
 ```powershell
 pip install -r requirements.txt
-
-# 1. Skin database (one-off, fast)
-python -m tradeup.cli sync-db
-
-# 2. Prices -- BULK. ~60 requests, a few minutes, caches the whole market.
-python -m tradeup.cli bulk-warm --currency BRL
-
-# 3. Scan
-python -m tradeup.cli scan --budget 20 --rarity consumer --currency BRL
-
-# Web UI (point it at the real snapshot first)
-$env:TRADEUP_PRICE_SNAPSHOT="data/price_snapshot.json"
-uvicorn tradeup.api:app --reload          # http://localhost:8000
-```
-
-A synthetic sample dataset ships with the project so everything runs and all
-tests pass offline. **The sample prices are fabricated** — the ROI figures you
-see before running `bulk-warm` are meaningless.
-
-```powershell
-python -m pytest tests -q      # 47 tests
+tradeup sync-db                      # skin database + float caps
+tradeup sync-images                  # skin images (optional)
+tradeup warm --rarity milspec --currency BRL
+tradeup guaranteed --budget 200 --currency BRL
+tradeup serve                        # http://localhost:8000
 ```
 
 ---
 
-## Rate limiting: read this before fetching prices
+## What changed in v2, and why
 
-Steam's `429 Too Many Requests` on the market is an **IP-level** limit, not
-per-account. Two things make it worse than a normal rate limit:
+### 1. Expected value was finding lottery tickets
 
-* A ban commonly lasts **hours**.
-* It **re-arms every time you hit it while banned**. Retrying keeps you locked out.
+The old default ranked by EV. That surfaced contracts like this:
 
-`priceoverview` returns **one item per request**, so a Mil-Spec sweep is ~5,600
-requests. That is unwinnable at any pace. `bulk-warm` uses the market's own
-paginated search endpoint — 100 items per request, ~56 requests for the same
-data. That is the same endpoint the market web page calls, so it *is* the
-efficient form of scraping; driving a browser at it would be strictly worse.
-
-| | `priceoverview` | `bulk-warm` |
-|---|---|---|
-| Items per request | 1 | 100 |
-| Lowest price | yes | yes |
-| Median price | yes | **no** |
-| 24h sales volume | yes | **no** — listing count instead |
-
-`sell_listings` is how many are **listed right now** — supply, not sales. So the
-intended workflow is two-stage:
-
-1. `bulk-warm` prices the whole universe cheaply → `scan` shortlists recipes.
-2. `warm-prices` on just those names gets true median + volume before you
-   commit money — dozens of precise requests instead of thousands.
-
-If you get banned:
-
-```powershell
-python -m tradeup.cli cooldown --currency BRL --wait
-python diagnose_steam.py --currency BRL
+```
+cost 101.80   EV 118.55   ROI 116%     <- looks great
+  M4A4 | Modern Hunter (WW)   50%   236.19
+  M4A4 | Sheet Lightning (FT) 25%     1.00
+  Glock-18 | Glockingbird(FT) 25%     0.81
 ```
 
-A router reboot that changes your IP also clears it.
+99.6% of that EV is one Well-Worn skin. You lose money on half the rolls, and
+the entire edge rests on a single illiquid price being correct. EV is the
+right metric only if you can run a contract enough times for the average to
+materialise. At R$100 a go, nobody can.
+
+**v2 optimises for the single roll.** The headline metric is now
+`P(win)` — how often *one* contract profits — and the default mode only
+returns contracts that cannot lose at all.
+
+### 2. Guaranteed contracts are a closed form, not a search
+
+A contract is risk-free when the *cheapest possible outcome* still beats what
+you paid. For a single-collection contract every outcome is equally likely,
+so:
+
+```
+guaranteed  ⟺  min(outcome_net) > total_input_cost
+            ⟺  cheapest_outcome × 0.8696 × (1−haircut) > n × input_price
+            ⟺  input_price < cheapest_outcome × 0.8696 / n
+```
+
+That is a constraint you can solve directly. For each collection: look up the
+cheapest next-tier outcome, divide by ~11.5, and any input below that price
+makes the whole contract safe. **O(collections), ~3 ms** — versus the
+combinatorial search the old optimizer ran.
+
+These exist because input and output prices are set by different supply
+dynamics. A Mil-Spec skin nobody wants can trade far below 1/11.5 of the
+cheapest Restricted in its own collection.
+
+```
+tradeup guaranteed --budget 200
+
+# ┃ Collection              ┃ Cost ┃ Worst ┃  Best ┃ Guaranteed ┃ Floor ROI ┃
+# 1 │ The Militia Collection │ 2.70 │ 16.09 │ 31.90 │     +13.39 │      596% │
+```
+
+*Floor ROI* is the return on the **worst** roll, not the average.
+
+### 3. Price fetching self-tunes instead of guessing
+
+The old client used a fixed 18 requests/min. Too fast and you collect 429s,
+each costing an exponential backoff — so throughput collapses below what a
+slower fixed rate would have given. Too slow and a sweep takes six hours.
+There is no correct constant: the limit varies by endpoint, time of day, and
+how much credit your IP has recently spent.
+
+v2 uses **AIMD** — the same congestion control TCP uses:
+
+| event | response |
+|---|---|
+| 25 clean responses | rate `+2`/min |
+| any 429 | rate `× 0.5`, freeze increases for 90 s |
+| 5 consecutive 429s | circuit breaker opens, all traffic stops |
+
+Plus **concurrency** (8 in flight by default) so latency stops dominating,
+and a **negative cache** so names Steam has no listing for are never
+re-fetched. Requests overlap; the shared token bucket keeps the aggregate
+rate at whatever AIMD has settled on.
+
+One subtlety worth knowing: concurrent requests return several 429s for a
+*single* congestion event. Halving per response would collapse the rate to
+the floor after one incident, so decreases are limited to one per 10-second
+window — exactly as TCP reduces once per round trip.
+
+### 4. Risk is visible, not buried in an average
+
+Every contract now reports:
+
+| metric | meaning |
+|---|---|
+| **P(win)** | chance a single roll profits |
+| **worst case** | what you get on the cheapest outcome |
+| **grade** | guaranteed · strong · even · risky · lottery |
+| **expected loss** | `E[loss \| you lose]` |
+| **risk/reward** | expected profit per unit of worst-case loss |
+| **top outcome share** | >85% means the edge rests on one price |
+
+`n*` is still reported, but it assumes the *prices are correct* and only the
+roll is random. It cannot see a mispriced skin. That is why concentration is
+tracked separately.
 
 ---
 
-## The math it implements
+## Why Python, not a rewrite
 
-### 1. Output float (normalized mapping)
+You asked whether another language would be better. Honest answer: no, and
+rewriting would cost more than it gains.
 
-The output wear is **deterministic**, not random. Each input float is
-normalized inside *its own skin's* range, averaged, then projected onto the
-*output skin's* range:
+The bottleneck is **Steam's rate limit**, not compute. A guaranteed-contract
+search over 86 collections takes ~3 ms in Python; the price fetch it depends
+on takes minutes because the server throttles us. Rewriting in Go or Rust
+would make a 3 ms step into a 0.3 ms step and change nothing that matters.
+
+The engine also carries a lot of hard-won correctness — per-item odds, the
+two-stage float rescale, the 13% fee, Souvenir rules, encoding. Rewriting
+reintroduces every one of those bugs. The frontend is a single dependency-free
+HTML file: no build step, no npm, loads instantly.
+
+What *did* change is the architecture: async I/O, adaptive limiting, and a
+closed-form search replacing a combinatorial one.
+
+---
+
+## The maths
+
+### Float: rescaled twice, using each skin's own cap
+
+Output wear is deterministic. Each input is normalised by **its own** float
+cap, averaged, then rescaled into the **output's** cap:
 
 ```
-norm_i     = (float_i - min_i) / (max_i - min_i)
-avg_norm   = sum(norm_i) / N
-out_float  = out_min + avg_norm * (out_max - out_min)
+trade_up_float = (float − min) / (max − min)
+average        = mean of those over n inputs
+outcome_float  = average × (out_max − out_min) + out_min
 ```
 
-The most misunderstood mechanic in trade-ups. A 0.04 float on a 0.00–0.08 skin
-is **0.50** normalized; the same 0.04 on a 0.00–1.00 skin is **0.04**. Raw float
-averaging is wrong whenever inputs have different ranges.
+Averaging raw floats is the pre-Retakes model and is wrong whenever caps
+differ. Verified to 8 decimals:
 
-Consequences: **wide-range skins are better inputs** at the same absolute float,
-and the *output's* own min/max — not your inputs' — decides the final wear
-bracket. `required_avg_norm_for_wear()` inverts the formula so you can ask
-"what average do I need to land this in Factory New?".
-
-### 2. Outcome probabilities — and the honest caveat
-
-Valve does not publish the outcome-selection rule and community calculators
-disagree. Both models are implemented, and `--robust` (default on) keeps only
-recipes profitable under **both**:
-
-| Model | Rule | 5A / 5B mix (A has 2 outputs, B has 4) |
+| case | expected | computed |
 |---|---|---|
-| `outcome_weighted` | `P(o in c) = n_c / sum(n_k * O_k)` | A gets 33% of the mass |
-| `per_input` | pick an input (1/N), then one of its collection's outputs | A gets 50% |
+| MAC-10 \| Sakkaku 0.22798392 in 0.21–0.79 | 0.031007 | 0.031007 |
+| 10× P90 \| Trigon 0.749 in 0.08–0.75 | 0.99850746 | 0.99850746 |
+| → AWP \| Asiimov cap 0.18–1.00 | 0.998776119 | 0.998776119 |
+| → AUG \| Chameleon cap 0.00–0.50 | 0.499253731 | 0.499253731 |
 
-Identical for single-collection contracts; they diverge sharply on
-mixed-collection filler builds — exactly where "profitable" recipes appear. Any
-tool that hides this is selling confidence it does not have.
+One contract produces a different float — and possibly a different wear — for
+each outcome, because each output has its own cap. The UI shows the cap
+beside every skin.
 
-### 3. Fees — the 15% is added on top, not taken out
-
-Steam charges 5% (platform) + 10% (CS2 game fee), both computed on the
-**seller's proceeds**, each with a $0.01 minimum:
-
-```
-buyer_pays  = seller_gets * 1.15
-seller_gets = buyer_pays / 1.15   (about 86.96% of the listing)
-```
-
-The common `* 0.85` shortcut understates your take by ~2 percentage points and
-silently kills marginal recipes. Pass `--fee 0.02` for CSFloat, `0.08` for
-Skinport, etc.
-
-### 4. Souvenir inputs (rule change, 22 May 2026)
-
-Souvenir items are now valid trade-up inputs. All souvenir attributes are
-stripped and the **output is always normal quality** — feeding ten Souvenirs in
-does not produce a Souvenir out. The tool prices inputs with the `Souvenir `
-prefix and *always* prices outputs without it; there is a test asserting the
-output is never quoted as a Souvenir.
-
-This matters most at Consumer and Industrial grade, where most supply comes
-from souvenir-bearing tournament and map collections. Because the contract
-destroys the provenance, there is no reason to pay a premium for it — souvenir
-copies are often the cheapest way to fill a slot.
-
-Guides that say souvenirs cannot enter trade-ups predate this patch. Use
-`--no-souvenir` to model the old rules.
-
-**Which skins actually have a Souvenir variant?** Souvenir and StatTrak are
-mutually exclusive and come from different sources (cases vs tournament
-packages), so `souvenir_capable` is derived from **crate membership**, not from
-the upstream `souvenir` boolean — that flag is set on nearly every finish and
-would claim ~1400 Souvenir listings exist. `sync-db` warns if the derived rate
-looks implausible. To check against the live market:
-
-```powershell
-python -m tradeup.cli verify-souvenir --rarity consumer --currency BRL
-```
-
-**Pricing caveat:** a Souvenir's value is dominated by its gold stickers (event,
-teams, MVP autograph), which the market hash name does not capture. Two
-identical-looking Souvenirs can differ by orders of magnitude. That is tolerable
-here only because souvenirs are bought as fodder at the `lowest` listing — never
-read the `median` of a Souvenir name as a real valuation.
-
-### 5. Expected value, and what it does not tell you
+### Odds: per item
 
 ```
-EV_net = sum(P(o) * net_price(o))
-profit = EV_net - sum(input_costs)
-ROI    = EV_net / cost
+P(collection C) = inputs_from_C / n
+P(skin s in C)  = (inputs_from_C / n) / outcomes_in_C
 ```
 
-Positive EV is necessary, not sufficient. Also reported:
+Seven of ten inputs from a 3-outcome collection → 70% collection, 23.33% per
+skin. One M4A1-S | Knight among ten → a flat **10%** at Dragon Lore, because
+Cobblestone has exactly one outcome above it. The legacy pre-Retakes model
+returns 5.26% for everything and is kept only for comparison
+(`--odds outcome_weighted`).
 
-- **P(win)** — how often a *single* contract beats your cost. Many +EV trade-ups
-  win 8% of the time: a good lottery ticket, not income.
-- **sigma** — outcome standard deviation.
-- **n\*** — how many identical contracts before the edge outweighs the noise at
-  ~2 sigma. If `n* = 340` at R$200 each, that is a bankroll problem, not a
-  strategy.
-- **Unpriced mass** — probability on outcomes with no price data. Recipes above
-  10% are dropped, since an unpriced outcome scores as zero.
+### Fee: 13% of what the buyer pays
 
-### 6. Price realism
+Valve charges 5% + 10% **of the seller's proceeds**, each floor-rounded with
+a $0.01 minimum. Because the fee is built on top rather than taken out:
 
-The default policy is deliberately pessimistic, because the classic way these
-calculators lie is using `lowest_price` on both sides:
+```
+buyer pays 271.60  →  seller receives 236.19     (13.04% lost)
+list at 100.00     →  you receive 86.96
+```
 
-- **Inputs** at `lowest` — what you actually pay.
-- **Outputs** at `median` — the lowest listing is often one outlier you cannot
-  reproduce ten times.
-- **Haircut** (3%) on outputs.
-- **Output volume floor** (`--min-volume`, default 3).
-- **Input volume floor** (`--min-input-volume`, default 10) — you need *ten*
-  copies. Souvenir listings are often near-unique, so a R$0.40 quote backed by
-  two daily sales is not a real price.
-- **Float percentile** (0.15) — "with some hunting I can source an item in the
-  bottom 15% of this wear bracket". Use `0.0` only if you will pay float-sniper
-  premiums; `0.5` for a lazy market-order assumption.
+`× 0.85` understates your take by ~2 points and kills marginal recipes.
+Use `--fee 0.02` for CSFloat, `0.08` for Skinport.
+
+### Souvenir in, normal out
+
+Souvenir items are legal inputs since 22 May 2026. Attributes are stripped and
+the **output is always normal quality**. Souvenir copies are often the cheapest
+way to fill a slot. `souvenir_capable` is derived from Souvenir Package crate
+membership, not the upstream boolean (which is set on nearly every finish).
+
+---
+
+## Commands
+
+| command | purpose |
+|---|---|
+| `sync-db` | Skin database, float caps, collections |
+| `sync-images` | Image URLs from the same payload |
+| `warm` | Fetch prices — concurrent, adaptive, resumable |
+| `guaranteed` | Contracts that cannot lose. **Start here** |
+| `scan` | Ranked search, filtered on chance of profit |
+| `serve` | Web UI |
+
+### Web UI
+
+Two modes as a top-level toggle:
+
+- **Guaranteed** — only floor-positive contracts. No losing roll exists.
+- **Ranked** — the general search, with a *minimum chance of profit* slider.
+
+Every card expands to show an **outcome spread bar**: each outcome as a dot,
+your cost as an orange line. Dots left of the line are losing outcomes. For a
+guaranteed contract there are none.
+
+Float caps, market depth, images, and per-outcome profit are shown inline.
 
 ---
 
@@ -205,74 +224,85 @@ calculators lie is using `lowest_price` on both sides:
 
 ```
 cs2-tradeup-lab/
-  README.md
-  requirements.txt
-  pytest.ini
-  .gitignore
-  diagnose_steam.py              standalone connectivity/cache diagnostic
-  data/
-    sample_skins.json            bundled offline fixtures
-    sample_prices.json           (fabricated -- not real market data)
-  tradeup/
-    __init__.py
-    models.py                    Skin, InputItem, wear brackets, rarity ladder
-    engine.py                    float mapping, odds, fees, EV, validation
-    pricing.py                   quote -> usable price policy
-    optimizer.py                 budget-constrained recipe search
-    cli.py                       typer CLI (all commands)
-    api.py                       FastAPI + single-page UI
-    data/
-      __init__.py
-      loader.py                  skin DB indexing + CSGO-API sync
-    prices/
-      __init__.py
-      steam.py                   per-item client: cache, backoff, heartbeat
-      bulk.py                    100-items-per-request sweep
-  tests/
-    test_engine.py               fees, normalization, both odds models, EV
-    test_souvenir.py             souvenir rules, quality derivation, liquidity
-    test_sync_and_encoding.py    sync failures, UTF-8 on Windows, static guard
-    test_bulk.py                 pagination, filtering, 429 recovery
+├── README.md  AGENTS.md  pyproject.toml  requirements.txt  LICENSE
+├── data/
+│   ├── sample_skins.json      TRACKED   offline fixtures
+│   ├── sample_prices.json     TRACKED   fabricated, tests only
+│   ├── skins.json             generated by sync-db
+│   ├── images.json            generated by sync-images
+│   ├── prices.sqlite          the price cache
+│   └── price_snapshot.json    exported cache, used by scans
+├── tradeup/
+│   ├── models.py              Skin, InputItem, Outcome, wear brackets
+│   ├── engine.py              float mapping, odds, fees, EV   [PURE]
+│   ├── risk.py                risk profile + guaranteed search [NEW]
+│   ├── pricing.py             quote → usable price policy
+│   ├── optimizer.py           risk-aware heuristic search
+│   ├── images.py              image index with placeholder fallback
+│   ├── cli.py                 all commands
+│   ├── web.py                 FastAPI, two modes
+│   ├── static/index.html      single-file UI, no build step
+│   ├── data/loader.py         skin DB + CSGO-API sync
+│   └── prices/
+│       ├── steam.py           cache, quotes, price parsing
+│       ├── bulk.py            paginated bulk sweep
+│       └── fetcher.py         async AIMD fetcher            [NEW]
+└── tests/                     55 tests, all offline
 ```
 
-The engine is pure — prices are injected via a callback, so swapping Steam for
-another marketplace means implementing one `get(name) -> Quote` method.
+`engine.py` imports only `models.py` and the stdlib. Prices arrive through a
+callback, which is why the whole suite runs with no network.
 
 ---
 
-## Commands
+## Install
 
-| Command | What it does |
-|---|---|
-| `sync-db` | Download/normalize the skin database. `--from-file` for manual download. |
-| `bulk-warm` | Price the market 100 items per request. **Start here.** |
-| `cooldown` | Is this IP rate limited? `--wait` polls until clear. |
-| `warm-prices` | Precise per-item median + volume. Slow; use on a shortlist. |
-| `verify-souvenir` | Do `Souvenir X` listings really exist? |
-| `scan` | Find the best recipes under a budget. |
-| `eval` | Score a hand-built contract from JSON. |
+```powershell
+git clone https://github.com/YOUR-USERNAME/cs2-tradeup-lab.git
+cd cs2-tradeup-lab
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+pytest                          # 55 tests, offline, on bundled fixtures
+```
+
+Python 3.10+. A fresh clone runs and passes its tests with **zero network
+access**. The bundled prices are fabricated — any ROI you see before `warm`
+is meaningless.
+
+**Windows:** skin names contain characters cp1252 cannot encode, so every
+read and write pins `encoding="utf-8"` and the console is reconfigured at
+startup. A static test fails if any text I/O omits an encoding.
 
 ---
 
-## Roadmap
+## Rate limits: read before fetching
 
-1. **5-Covert gold contracts** — the engine handles N=5; needs the knife/glove
-   pool modelled as a pseudo-collection. This is why `sync-db` reports 0
-   tradeable Covert collections.
-2. **Float-specific pricing** — today a 0.001 FN and a 0.069 FN share one price.
-3. **Alternative price sources** — the `PriceSource` protocol makes this a small
-   class; a cash marketplace also changes the fee model favourably.
-4. **Historical backtest** to check whether recipes that scored well last month
-   actually paid.
+Steam's `429` is **per IP**, lasts hours, and **re-arms every time you hit it
+while banned**. Retrying makes it worse.
+
+`warm` handles this automatically — it starts conservative, speeds up while
+clean, halves on a limit, and stops entirely if the limit is hit repeatedly.
+If the circuit breaker trips, stop and come back later; a router reboot that
+changes your IP also clears it.
+
+Ctrl+C is always safe: every quote is committed as it arrives, and a resumed
+run fetches only what is still missing.
 
 ---
 
 ## Reality check
 
-Steam wallet funds cannot be withdrawn. A "profitable" Steam-only trade-up
-compounds into more Steam credit, not money. If the goal is actual profit, the
-sell side has to be a cash marketplace, which changes both the fee model (2–8%
-instead of 15%) and the liquidity assumptions — both configurable here.
+Steam wallet funds cannot be withdrawn. A profitable Steam-only trade-up
+compounds into more Steam credit, not money. Real profit needs a cash
+marketplace, which changes the fee model (2–8% instead of 13%) and the
+liquidity assumptions — both configurable.
 
-Trade-ups consume the inputs permanently. Treat **n\*** as the honest headline
-number, not ROI.
+Trade-ups consume the inputs permanently. A **guaranteed** contract is
+guaranteed only if its prices are real: confirm the worst outcome's price
+and listing depth before committing, especially for anything in Well-Worn.
+
+## License
+
+MIT. Not affiliated with Valve. Skin data from the unofficial
+[CSGO-API](https://github.com/ByMykel/CSGO-API).

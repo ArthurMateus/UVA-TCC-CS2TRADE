@@ -1,87 +1,46 @@
-"""Skin images, from the same free source as the skin database.
+"""Skin images from the same CSGO-API payload sync-db already downloads.
 
-`skins.json` from CSGO-API already carries an `image` field per finish, so
-no extra API and no key is needed -- the images are a byproduct of a sync
-you already run.
-
-    python -m tradeup.cli sync-images
-
-writes `data/images.json` as {skin name: image url}. The web app loads it
-lazily and degrades to a placeholder when a name is missing, so nothing
-breaks if you never run it.
-
-Images are hotlinked from Steam's CDN (community.cloudflare.steamstatic.com
-or community.akamai.steamstatic.com). They are served to your browser
-directly, so this costs your server nothing and adds no API calls.
+No second API, no key. URLs point at Steam's CDN and are loaded lazily by
+the browser, so the server never proxies them.
 """
 from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Optional, Union
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGES_PATH = ROOT / "data" / "images.json"
-
-# 1x1 transparent gif -- used when a skin has no image, so the layout does
-# not jump and no broken-image icon appears
-PLACEHOLDER = (
-    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-)
-
+IMAGES_PATH = ROOT/"data"/"images.json"
+PLACEHOLDER = ("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAA"
+               "AAABAAEAAAIBRAA7")
 
 class ImageIndex:
-    """name -> image URL, with graceful fallback."""
-
-    def __init__(self, mapping: Optional[dict[str, str]] = None):
-        self.map: dict[str, str] = mapping or {}
-        # index without the "| " so lookups are forgiving
+    def __init__(self, mapping: Optional[dict] = None):
+        self.map = mapping or {}
         self._loose = {self._key(k): v for k, v in self.map.items()}
-
     @staticmethod
-    def _key(name: str) -> str:
-        return name.lower().replace("\u2122", "").replace("★", "").strip()
-
+    def _key(n: str) -> str:
+        return n.lower().replace("\u2122","").replace("\u2605","").strip()
     @classmethod
     def load(cls, path: Union[str, Path] = IMAGES_PATH) -> "ImageIndex":
         p = Path(path)
-        if not p.exists():
-            return cls({})
-        try:
-            return cls(json.loads(p.read_text(encoding="utf-8")))
-        except (ValueError, OSError):
-            return cls({})
+        if not p.exists(): return cls({})
+        try: return cls(json.loads(p.read_text(encoding="utf-8")))
+        except (ValueError, OSError): return cls({})
+    def get(self, name: str) -> str:
+        return self.map.get(name) or self._loose.get(self._key(name)) or PLACEHOLDER
+    def __len__(self): return len(self.map)
 
-    def get(self, skin_name: str) -> str:
-        """Image URL for a finish name like 'AK-47 | Redline'."""
-        if skin_name in self.map:
-            return self.map[skin_name]
-        v = self._loose.get(self._key(skin_name))
-        return v or PLACEHOLDER
-
-    def __len__(self) -> int:
-        return len(self.map)
-
-
-def build_from_payload(raw: list) -> dict[str, str]:
-    """Extract {name: image} from a CSGO-API skins.json payload."""
-    out: dict[str, str] = {}
+def build_from_payload(raw: list) -> dict:
+    out = {}
     for item in raw:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name") or ""
-        # strip a trailing "(Wear)" if the entry carries one
-        if name.endswith(")") and "(" in name:
-            name = name[: name.rfind("(")].strip()
-        img = item.get("image")
-        if name and img and name not in out:
-            out[name] = img
+        if not isinstance(item, dict): continue
+        n = item.get("name") or ""
+        if n.endswith(")") and "(" in n: n = n[:n.rfind("(")].strip()
+        i = item.get("image")
+        if n and i and n not in out: out[n] = i
     return out
 
-
-def save(mapping: dict[str, str], path: Union[str, Path] = IMAGES_PATH) -> Path:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(mapping, ensure_ascii=False, indent=0),
-                 encoding="utf-8")
+def save(mapping: dict, path: Union[str, Path] = IMAGES_PATH) -> Path:
+    p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
     return p
