@@ -154,8 +154,8 @@ class GuaranteedRecipe:
     collection: str
     input_rarity: Rarity
     n_inputs: int
-    inputs: list          # [(Skin, wear, float, price)] repeated to n_inputs
-    outcomes: list        # [(Skin, wear, out_float, net)]
+    inputs: list          # [(Skin, wear, float, price, souvenir)] x n_inputs
+    outcomes: list        # [(Skin, wear, out_float, net, gross)]
     cost: float
     worst_net: float
     best_net: float
@@ -201,6 +201,7 @@ def find_guaranteed(
     souvenir: bool = True,
     fee_keep: float = STEAM_KEEP,
     haircut: float = 0.03,
+    fee_rate: Optional[float] = None,
     min_profit: float = 0.0,
     require_all_outcomes_priced: bool = True,
     liquidity_fn: Optional[Callable[[str], Optional[int]]] = None,
@@ -218,8 +219,16 @@ def find_guaranteed(
     zero elsewhere in this codebase, which would make the floor look like a
     total loss. Here we refuse to call a contract guaranteed when we cannot
     see every outcome's price.
+
+    FEES: `prices.sell_price` returns the buyer-facing price (already with the
+    pricing policy's haircut) but NOT net of marketplace fees. Every outcome
+    is converted with `engine.net_after_fee(g, fee_rate)` (Steam's 5%+10%
+    when `fee_rate` is None) before being compared with the cost, so
+    `worst_net`/`guaranteed_profit` are what you actually receive.
+    `fee_keep` and `haircut` are kept for backwards compatibility only: the
+    haircut is applied once, by the PriceService, never twice.
     """
-    from .engine import outcome_float, trade_up_float
+    from .engine import net_after_fee, outcome_float, trade_up_float
     from .models import wear_from_float
     from .pricing import sourceable_float
 
@@ -246,13 +255,15 @@ def find_guaranteed(
                 g = prices.sell_price(s, w)
                 if g is None:
                     continue
-                if cheapest is None or g < cheapest:
-                    cheapest = g
+                net = net_after_fee(g, fee_rate)
+                if cheapest is None or net < cheapest:
+                    cheapest = net
         if cheapest is None:
             continue
 
+        # `cheapest` is already net of fees and haircut: no second discount.
         ceiling = max_input_price_for_guarantee(
-            cheapest, n_inputs, fee_keep, haircut)
+            cheapest, n_inputs, fee_keep=1.0, haircut=0.0)
         if ceiling <= 0:
             continue
 
@@ -299,7 +310,8 @@ def find_guaranteed(
                     ok = False
                     break
                 continue
-            resolved.append((s, w, round(f, 8), round(g, 4)))
+            resolved.append((s, w, round(f, 8), round(net_after_fee(g, fee_rate), 4),
+                             round(g, 4)))
         if not ok or not resolved:
             continue
 
@@ -322,8 +334,12 @@ def find_guaranteed(
 
 
 def explain_guaranteed(r: GuaranteedRecipe) -> dict:
+    from .float_pricing import float_dependence
     skin, wear, fv, price, sv = r.inputs[0]
+    dep = float_dependence([(skin, wear, fv)], [(s, w) for s, w, *_ in r.outcomes])
     return {
+        **dep,
+        "price_basis": "wear",
         "mode": "guaranteed",
         "target_collection": r.collection,
         "filler_collection": None,
@@ -355,10 +371,10 @@ def explain_guaranteed(r: GuaranteedRecipe) -> dict:
         "outcomes": [{
             "skin": s.name, "wear": w, "float": f,
             "p_pct": round(100.0 / len(r.outcomes), 3),
-            "net": net, "gross": round(net / (1 - 0.03) if net else 0, 4),
+            "net": net, "gross": gross,
             "min_float": round(s.min_float, 4),
             "max_float": round(s.max_float, 4),
             "priced": True,
             "profits": net > r.cost,
-        } for s, w, f, net in sorted(r.outcomes, key=lambda x: x[3])],
+        } for s, w, f, net, gross in sorted(r.outcomes, key=lambda x: x[3])],
     }

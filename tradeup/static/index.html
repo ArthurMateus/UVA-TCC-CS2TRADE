@@ -1,415 +1,842 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CS2 Trade-Up Browser</title>
+<meta name="color-scheme" content="light dark">
+<title>CS2 Trade-Up Lab — Trade-Up Browser de contratos lucrativos</title>
 <style>
+/* ---------- Tokens (tema claro por padrão; escuro via prefers-color-scheme) */
 :root{
-  --bg:#0c0f14; --panel:#141920; --card:#19202a; --card2:#131920; --line:#242d39;
-  --fg:#e9eff6; --dim:#8a97a8; --faint:#5a6674;
-  --ok:#3fb950; --bad:#f85149; --warn:#d29922; --acc:#58a6ff; --gold:#e3b341;
+  --bg:#f4f6f9; --panel:#ffffff; --card:#ffffff; --card2:#f8fafc; --sunk:#eef2f6;
+  --line:#d5dce5; --line2:#e6ebf1;
+  --fg:#0f1723; --dim:#435063; --faint:#566274;
+  --ok:#17702f; --ok-bg:#e3f4e8; --bad:#b4232a; --bad-bg:#fbe7e8;
+  --warn:#8a5a00; --warn-bg:#fdf1d8; --acc:#0b57c9; --acc-bg:#e3edfc; --on-acc:#ffffff;
+  --risky:#a33a12; --risky-bg:#fdebe2;
+  --shadow:0 1px 2px rgba(15,23,35,.06),0 2px 8px rgba(15,23,35,.04);
+  --focus:0 0 0 3px var(--bg),0 0 0 5px var(--acc);
+  --radius:12px; --hdr:64px;
+  --font:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0d1117; --panel:#121820; --card:#161c25; --card2:#11161e; --sunk:#0a0e14;
+    --line:#2a3441; --line2:#202833;
+    --fg:#e8eef5; --dim:#a7b3c2; --faint:#8d99a8;
+    --ok:#4cc364; --ok-bg:rgba(76,195,100,.14); --bad:#ff7d75; --bad-bg:rgba(255,125,117,.13);
+    --warn:#e0a83a; --warn-bg:rgba(224,168,58,.14); --acc:#6cb2ff; --acc-bg:rgba(108,178,255,.14);
+    --on-acc:#071423; --risky:#ff9b6b; --risky-bg:rgba(255,155,107,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--fg);
-  font:14px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
-header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;
-  align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;
-  background:var(--bg);z-index:30}
-h1{font-size:16px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
-.sub{color:var(--dim);font-size:12px}
-.modes{display:flex;gap:0;margin-left:auto;border:1px solid var(--line);
-  border-radius:8px;overflow:hidden}
-.modes button{background:transparent;border:0;color:var(--dim);padding:7px 16px;
-  cursor:pointer;font:inherit;font-size:13px;font-weight:560}
-.modes button.on{background:var(--acc);color:#06121f}
-.wrap{display:grid;grid-template-columns:286px 1fr;min-height:calc(100vh - 51px)}
-aside{border-right:1px solid var(--line);padding:16px;background:var(--panel);
-  position:sticky;top:51px;height:calc(100vh - 51px);overflow-y:auto}
-main{padding:16px 22px 60px;min-width:0}
-.grp{margin-bottom:18px}
-.grp>h3{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
-  color:var(--faint);margin-bottom:8px;font-weight:650}
-label{display:block;font-size:12px;color:var(--dim);margin:8px 0 4px}
-input,select{width:100%;background:#0a0e13;border:1px solid var(--line);
-  color:var(--fg);padding:7px 9px;border-radius:6px;font:inherit;font-size:13px}
-input:focus,select:focus{outline:none;border-color:var(--acc)}
-input[type=range]{padding:0;height:20px;accent-color:var(--acc);border:0;background:none}
-.row{display:flex;gap:8px}.row>*{flex:1}
-.chk{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:12.5px;color:var(--dim)}
-.chk input{width:auto}
-.big{font-variant-numeric:tabular-nums;font-size:19px;font-weight:680;
-  color:var(--acc);letter-spacing:-.02em}
-button.go{width:100%;background:var(--acc);border:0;color:#06121f;font-weight:660;
-  padding:10px;border-radius:7px;cursor:pointer;font:inherit;font-weight:660;margin-top:4px}
-button.ghost{width:100%;background:transparent;border:1px solid var(--line);
-  color:var(--dim);padding:7px;border-radius:6px;cursor:pointer;font:inherit;
-  font-size:12.5px;margin-top:6px}
-.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.pill{background:var(--card);border:1px solid var(--line);border-radius:20px;
-  padding:4px 11px;font-size:12px;color:var(--dim)}
-.pill b{color:var(--fg);font-variant-numeric:tabular-nums}
-.banner{background:linear-gradient(90deg,rgba(63,185,80,.10),transparent);
-  border:1px solid rgba(63,185,80,.25);border-left:3px solid var(--ok);
-  border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:13px}
-.banner b{color:var(--ok)}
-.banner.warn{background:linear-gradient(90deg,rgba(210,153,34,.10),transparent);
-  border-color:rgba(210,153,34,.3);border-left-color:var(--warn)}
-.banner.warn b{color:var(--warn)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:11px;
-  margin-bottom:10px;overflow:hidden}
-.card.g{border-color:rgba(63,185,80,.4)}
-.chead{display:grid;
-  grid-template-columns:30px 1fr 92px repeat(4,minmax(76px,auto)) 26px;
-  gap:10px;align-items:center;padding:11px 14px;cursor:pointer}
-.rank{font-size:14px;font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums}
-.tgt{min-width:0}
-.tgt .cn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tgt .cs{color:var(--dim);font-size:11.5px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;margin-top:1px}
-.m{text-align:right;font-variant-numeric:tabular-nums}
-.m .v{font-weight:650;font-size:14px}
-.m .k{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
-.pos{color:var(--ok)}.neg{color:var(--bad)}
-.grade{padding:4px 9px;border-radius:6px;font-size:11px;font-weight:680;
-  text-align:center;text-transform:uppercase;letter-spacing:.04em}
-.g-guaranteed{background:rgba(63,185,80,.18);color:var(--ok)}
-.g-strong{background:rgba(88,166,255,.16);color:var(--acc)}
-.g-even{background:rgba(210,153,34,.16);color:var(--warn)}
-.g-risky{background:rgba(248,81,73,.14);color:#ff8a80}
-.g-lottery{background:rgba(248,81,73,.2);color:var(--bad)}
-.caret{color:var(--faint);transition:transform .15s;text-align:center}
-.card.open .caret{transform:rotate(90deg)}
-.body{display:none;border-top:1px solid var(--line);padding:14px;background:var(--card2)}
-.card.open .body{display:block}
-h4{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);
-  margin:14px 0 8px;font-weight:650}
-h4:first-child{margin-top:0}
-.range{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
-.range .lbl{font-size:11px;color:var(--faint);white-space:nowrap}
-.track{flex:1;height:26px;background:#0a0e13;border-radius:5px;position:relative;
-  border:1px solid var(--line);overflow:hidden}
-.track .cost{position:absolute;top:0;bottom:0;left:0;background:rgba(248,81,73,.18)}
-.track .dot{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;
-  transform:translate(-50%,-50%);background:var(--ok);border:2px solid var(--card2)}
-.track .dot.lose{background:var(--bad)}
-.track .costline{position:absolute;top:0;bottom:0;width:2px;background:var(--warn)}
-.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
-.item{background:#0b1016;border:1px solid var(--line);border-radius:8px;padding:8px;
-  display:flex;gap:8px;align-items:center}
-.item.win{border-left:3px solid var(--ok)}
-.item.lose{border-left:3px solid var(--bad)}
-.item img{width:54px;height:40px;object-fit:contain;flex-shrink:0}
-.item .d{min-width:0;flex:1}
-.item .n{font-size:11.5px;font-weight:560;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
-.item .w{font-size:10.5px;color:var(--dim);margin-top:1px}
-.item .f{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
-.item .p{font-size:12.5px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
-th{text-align:right;color:var(--faint);font-weight:500;font-size:10px;
-  text-transform:uppercase;letter-spacing:.06em;padding:0 8px 5px}
-th:first-child,td:first-child{text-align:left}
-td{padding:5px 8px;border-top:1px solid #1b222b;font-variant-numeric:tabular-nums;
-  text-align:right}
-tr.win td{background:rgba(63,185,80,.05)}
-.tag{display:inline-block;font-size:9px;padding:1px 5px;border-radius:8px;
-  text-transform:uppercase;letter-spacing:.04em;font-weight:680;margin-left:5px}
-.t-sv{background:rgba(88,166,255,.15);color:var(--acc)}
-.t-thin{background:rgba(210,153,34,.16);color:var(--warn)}
-.t-dead{background:rgba(248,81,73,.16);color:var(--bad)}
-.empty{text-align:center;padding:56px 20px;color:var(--dim)}
-.empty h2{font-size:16px;margin-bottom:8px;color:var(--fg)}
-.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
-  border-top-color:var(--acc);border-radius:50%;animation:s .7s linear infinite;
-  vertical-align:-2px;margin-right:7px}
-@keyframes s{to{transform:rotate(360deg)}}
-.note{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
-@media(max-width:980px){.wrap{grid-template-columns:1fr}
-  aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
-  .chead{grid-template-columns:26px 1fr 82px minmax(70px,auto) 24px}
-  .chead .hide{display:none}}
-</style>
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--font);min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+:focus{outline:none}
+:focus-visible{box-shadow:var(--focus);border-radius:6px}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);
+  white-space:nowrap}
+.skip{position:absolute;left:12px;top:-60px;background:var(--acc);color:var(--on-acc);
+  padding:8px 14px;border-radius:8px;z-index:99;font-weight:600;text-decoration:none}
+.skip:focus{top:10px}
+.num{font-variant-numeric:tabular-nums}
 
-<header>
-  <h1>CS2 Trade-Up Browser</h1>
-  <span class="sub" id="meta">loading…</span>
-  <div class="modes">
-    <button id="mG" class="on">Guaranteed</button>
-    <button id="mR">Ranked</button>
+/* ---------- Cabeçalho */
+header{position:sticky;top:0;z-index:40;background:var(--panel);
+  border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.hbar{display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap;padding:10px 24px;
+  max-width:1600px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:34px;height:34px;border-radius:9px;background:var(--acc);color:var(--on-acc);
+  display:grid;place-items:center;font-weight:800;font-size:13px;flex-shrink:0;letter-spacing:-.02em}
+h1{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.tagline{color:var(--dim);font-size:12.5px;line-height:1.3}
+.modes{display:inline-flex;margin-left:auto;background:var(--sunk);border:1px solid var(--line);
+  border-radius:10px;padding:3px;gap:3px}
+.modes button{background:transparent;border:0;color:var(--dim);padding:7px 16px;
+  border-radius:7px;cursor:pointer;font-size:14px;font-weight:600;display:flex;
+  flex-direction:column;align-items:flex-start;line-height:1.2;text-align:left}
+.modes button small{font-weight:400;font-size:11.5px}
+.modes button[aria-pressed="true"]{background:var(--card);color:var(--fg);box-shadow:var(--shadow);
+  outline:1px solid var(--line)}
+.modes button[aria-pressed="true"] small{color:var(--dim)}
+.filtersBtn{display:none;align-items:center;gap:6px;background:var(--card);
+  border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer;
+  font-weight:600;font-size:14px}
+.metaline{border-top:1px solid var(--line2);font-size:12.5px;color:var(--dim)}
+.metaline .in{max-width:1600px;margin:0 auto;padding:6px 24px;display:flex;flex-wrap:wrap;
+  gap:4px 16px}
+.metaline b{color:var(--fg);font-weight:600}
+.metaline .warnTxt{color:var(--warn);font-weight:600}
+
+/* ---------- Layout */
+.wrap{display:grid;grid-template-columns:300px minmax(0,1fr);max-width:1600px;margin:0 auto}
+aside{border-right:1px solid var(--line);padding:18px 18px 28px;background:var(--panel);
+  position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));overflow-y:auto}
+main{padding:20px 24px 72px;min-width:0}
+
+/* ---------- Formulário */
+fieldset{border:0;margin:0 0 20px;padding:0;min-width:0}
+legend{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+  font-weight:700;margin-bottom:8px;padding:0}
+label,.lbl{display:block;font-size:13px;color:var(--dim);margin:10px 0 4px;font-weight:500}
+input[type=number],select{width:100%;background:var(--card);border:1px solid var(--line);
+  padding:8px 10px;border-radius:8px;font-size:14px;min-height:38px}
+input[type=number]:focus-visible,select:focus-visible{border-color:var(--acc);border-radius:8px}
+input[type=range]{width:100%;accent-color:var(--acc);height:28px;background:none;cursor:pointer}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);flex-shrink:0;cursor:pointer}
+input:disabled{opacity:.55;cursor:not-allowed}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
+.chk{display:flex;align-items:flex-start;gap:9px;margin:10px 0 4px;font-size:13.5px;color:var(--fg);
+  cursor:pointer;font-weight:500}
+.chk input{margin-top:2px}
+.budget{font-size:24px;font-weight:750;letter-spacing:-.02em;color:var(--fg);line-height:1.2}
+.hint{font-size:12.5px;color:var(--faint);margin-top:5px;line-height:1.45}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:9px;
+  cursor:pointer;font-weight:650;font-size:14.5px;padding:10px 16px;min-height:42px;
+  border:1px solid transparent}
+.btn.primary{background:var(--acc);color:var(--on-acc);width:100%}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--dim);font-weight:550}
+.btn.ghost:hover{color:var(--fg);border-color:var(--faint)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.6;cursor:progress}
+.actions{position:sticky;bottom:-28px;background:var(--panel);padding:12px 0 4px;
+  display:grid;gap:8px;border-top:1px solid var(--line2)}
+
+/* ---------- Barra de resumo / guia */
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;
+  padding:4px 12px;font-size:13px;color:var(--dim)}
+.pill b{color:var(--fg);font-variant-numeric:tabular-nums}
+.pill.w{border-color:var(--warn);color:var(--warn)}
+details.guide{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:16px;box-shadow:var(--shadow)}
+details.guide>summary{cursor:pointer;padding:12px 16px;font-weight:650;font-size:14px;
+  list-style:none;display:flex;align-items:center;gap:8px;border-radius:var(--radius)}
+details.guide>summary::-webkit-details-marker{display:none}
+details.guide>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--dim);
+  border-bottom:2px solid var(--dim);transform:rotate(-45deg);transition:transform .15s;margin-right:4px}
+details.guide[open]>summary::before{transform:rotate(45deg)}
+details.guide>summary .sumdim{color:var(--dim);font-weight:400;font-size:13px}
+.gl{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 22px;
+  padding:4px 16px 16px;margin:0}
+.gl dt{font-weight:650;font-size:13.5px}
+.gl dd{color:var(--dim);font-size:13px;margin:2px 0 0}
+.banner{background:var(--ok-bg);border:1px solid var(--ok);border-left-width:4px;
+  border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:14px}
+.banner b{color:var(--ok)}
+
+/* ---------- Cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:10px;box-shadow:var(--shadow);overflow:hidden}
+.card.g{border-left:4px solid var(--ok)}
+.chead{display:grid;width:100%;background:transparent;border:0;cursor:pointer;text-align:left;
+  grid-template-columns:2rem minmax(0,1fr) auto 1.25rem;gap:10px 12px;align-items:center;
+  padding:12px 16px;border-radius:0}
+.chead:hover{background:var(--card2)}
+.chead:focus-visible{box-shadow:inset 0 0 0 3px var(--acc);border-radius:var(--radius)}
+.rank{font-size:15px;font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums}
+.tgt{min-width:0;display:block}
+.cn{display:block;font-weight:650;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cs{display:block;color:var(--dim);font-size:12.5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin-top:1px}
+.grade{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.g-guaranteed{background:var(--ok-bg);color:var(--ok)}
+.g-strong{background:var(--acc-bg);color:var(--acc)}
+.g-even{background:var(--warn-bg);color:var(--warn)}
+.g-risky{background:var(--risky-bg);color:var(--risky)}
+.g-lottery{background:var(--bad-bg);color:var(--bad)}
+.caret{width:9px;height:9px;border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);
+  transform:rotate(-45deg);transition:transform .15s;justify-self:center}
+.chead[aria-expanded="true"] .caret{transform:rotate(45deg)}
+.metrics{grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;
+  padding-left:calc(2rem + 12px)}
+.m{display:block;font-variant-numeric:tabular-nums;min-width:0}
+.m .v{display:block;font-weight:700;font-size:15px;white-space:nowrap}
+.m .k{display:block;font-size:11.5px;color:var(--faint);white-space:nowrap}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+.body{border-top:1px solid var(--line);padding:16px;background:var(--card2)}
+h3.sec{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);
+  margin:22px 0 8px;font-weight:700}
+h3.sec:first-child{margin-top:0}
+h3.sec .nc{text-transform:none;letter-spacing:0;font-weight:500}
+
+/* barra de dispersão */
+.range{display:flex;align-items:center;gap:10px;margin:4px 0 6px}
+.range .lim{font-size:12px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.track{flex:1;height:30px;background:var(--sunk);border-radius:7px;position:relative;
+  border:1px solid var(--line);overflow:hidden;min-width:0}
+.track .cost{position:absolute;top:0;bottom:0;left:0;background:var(--bad-bg)}
+.track .dot{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;
+  transform:translate(-50%,-50%);background:var(--ok);border:2px solid var(--card)}
+.track .dot.lose{background:var(--bad)}
+.track .costline{position:absolute;top:0;bottom:0;width:3px;background:var(--warn);transform:translateX(-50%)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--dim)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.legend i.l{border-radius:1px;width:3px;height:12px;vertical-align:-2px}
+
+/* itens */
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px;
+  display:flex;gap:10px;align-items:center;min-width:0}
+.item.win{border-left:4px solid var(--ok)}
+.item.lose{border-left:4px solid var(--bad)}
+.item img,.item .noimg{width:58px;height:44px;object-fit:contain;flex-shrink:0}
+.item .noimg{background:var(--sunk);border-radius:6px}
+.item .d{min-width:0;flex:1}
+.item .n{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .w{font-size:12px;color:var(--dim);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .f{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.item .p{font-size:13.5px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* tabelas */
+.tscroll{overflow-x:auto;margin-top:8px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+caption{text-align:left}
+th{text-align:right;color:var(--faint);font-weight:600;font-size:11.5px;padding:8px 10px;
+  background:var(--sunk);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:7px 10px;border-top:1px solid var(--line2);font-variant-numeric:tabular-nums;
+  text-align:right;white-space:nowrap}
+tr.win td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:999px;
+  font-weight:700;margin-left:6px;vertical-align:1px;letter-spacing:.02em}
+.t-sv{background:var(--acc-bg);color:var(--acc)}
+.t-thin{background:var(--warn-bg);color:var(--warn)}
+.t-dead{background:var(--bad-bg);color:var(--bad)}
+abbr[title]{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
+.note{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.5}
+
+/* estados */
+.state{text-align:center;padding:52px 20px;color:var(--dim);background:var(--card);
+  border:1px dashed var(--line);border-radius:var(--radius)}
+.state h2{font-size:18px;margin-bottom:8px;color:var(--fg)}
+.state p{max-width:520px;margin:0 auto 6px}
+.state .btn{margin-top:14px}
+.state.err{border-style:solid;border-color:var(--bad);background:var(--bad-bg)}
+.state.err h2{color:var(--bad)}
+.state.err p{color:var(--fg)}
+.inlineErr{color:var(--bad);font-size:13.5px;margin:8px 0;text-align:center}
+.skel{height:76px;border-radius:var(--radius);margin-bottom:10px;background:linear-gradient(90deg,
+  var(--card) 0%,var(--sunk) 50%,var(--card) 100%);background-size:200% 100%;
+  border:1px solid var(--line);animation:sh 1.2s ease-in-out infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid currentColor;
+  border-right-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-3px}
+@keyframes s{to{transform:rotate(360deg)}}
+.loadingTxt{display:flex;align-items:center;gap:10px;color:var(--dim);margin-bottom:12px;font-size:14px}
+#moreWrap{margin-top:14px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Responsivo */
+@media (min-width:1180px){
+  .chead{grid-template-columns:2rem minmax(0,1fr) auto minmax(25rem,auto) 1.25rem}
+  .chead .caret{order:5}
+  .metrics{grid-column:auto;padding-left:0;grid-template-columns:repeat(4,6.6rem);order:4}
+  .m{text-align:right}
+}
+@media (max-width:900px){
+  :root{--hdr:0px}
+  header{position:static}
+  .hbar{padding:10px 16px}
+  .filtersBtn{display:inline-flex;margin-left:auto}
+  .modes{margin-left:0;width:100%;order:3}
+  .modes button{flex:1;align-items:center;text-align:center}
+  .metaline .in{padding:6px 16px}
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);
+    display:none;padding:16px}
+  .wrap.fopen aside{display:block}
+  .actions{position:static}
+  main{padding:16px 16px 60px}
+}
+@media (max-width:520px){
+  .tagline{display:none}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr));padding-left:0}
+  .chead{padding:12px}
+  .body{padding:12px}
+  .items{grid-template-columns:minmax(0,1fr)}
+  .range .lim{display:none}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#out">Pular para os resultados</a>
+
+<header id="hdr">
+  <div class="hbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">TU</div>
+      <div>
+        <h1>CS2 Trade-Up Lab</h1>
+        <div class="tagline">Trade-Up Browser · contratos de troca com lucro líquido de taxas</div>
+      </div>
+    </div>
+    <button class="filtersBtn" id="fToggle" aria-expanded="false" aria-controls="filters">
+      Filtros</button>
+    <div class="modes" role="group" aria-label="Modo de busca">
+      <button id="mR" aria-pressed="true">Ranqueado<small>por chance de lucro</small></button>
+      <button id="mG" aria-pressed="false">Garantido<small>todo resultado lucra</small></button>
+    </div>
   </div>
+  <div class="metaline"><div class="in" id="meta" aria-live="polite">
+    <span><span class="spin" aria-hidden="true"></span> Carregando informações dos preços…</span></div></div>
 </header>
 
-<div class="wrap">
-<aside>
-  <div class="grp">
-    <h3>Budget</h3>
-    <div class="big" id="bLbl">R$ 200</div>
+<div class="wrap" id="wrap">
+<aside id="filters" aria-label="Filtros da busca">
+  <fieldset>
+    <legend>Orçamento</legend>
+    <div class="budget num" id="bLbl" aria-hidden="true">R$ 200</div>
+    <label for="bRange" class="sr">Orçamento (controle deslizante)</label>
     <input type="range" id="bRange" min="1" max="1000" step="1" value="200">
-    <div class="row" style="margin-top:6px">
-      <input type="number" id="budget" value="200" step="10" min="1">
-      <select id="currency">
-        <option value="BRL" selected>BRL</option><option value="USD">USD</option>
-        <option value="EUR">EUR</option><option value="GBP">GBP</option>
-      </select>
+    <div class="row">
+      <div><label for="budget">Valor máximo</label>
+        <input type="number" id="budget" value="200" step="10" min="1" inputmode="decimal"></div>
+      <div><label for="currency">Moeda</label>
+        <select id="currency">
+          <option value="BRL" selected>BRL (R$)</option><option value="USD">USD ($)</option>
+          <option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
+        </select></div>
     </div>
-    <div class="note">Max total input cost per contract.</div>
-  </div>
+    <div class="hint">Custo total máximo das 10 skins de entrada de cada contrato.</div>
+  </fieldset>
 
-  <div class="grp">
-    <h3>Contract</h3>
-    <label>Input rarity</label><select id="rarity"></select>
-    <label>Float percentile you can source</label>
-    <input type="number" id="fp" value="0.15" step="0.05" min="0" max="1">
-    <label>Min listings per input</label>
-    <input type="number" id="miv" value="5" step="1" min="0">
-    <div class="note">You must buy 10 copies — this rejects inputs nobody lists.</div>
-    <div class="chk"><input type="checkbox" id="sv" checked>
-      <label for="sv" style="margin:0">Allow Souvenir inputs</label></div>
-  </div>
+  <fieldset>
+    <legend>Contrato</legend>
+    <label for="rarity">Raridade das entradas</label><select id="rarity"></select>
+    <label for="fp">Percentil de float que você consegue comprar</label>
+    <input type="number" id="fp" value="0.15" step="0.05" min="0" max="1" inputmode="decimal"
+      aria-describedby="fpHint">
+    <div class="hint" id="fpHint">0,15 = você compra entradas entre as 15% de menor float
+      dentro do desgaste. Use ponto ou vírgula conforme o seu navegador.</div>
+    <label for="miv">Mínimo de anúncios por entrada</label>
+    <input type="number" id="miv" value="5" step="1" min="0" aria-describedby="mivHint">
+    <div class="hint" id="mivHint">Você precisa comprar 10 cópias — isto descarta entradas
+      que quase ninguém anuncia.</div>
+    <label class="chk" for="sv"><input type="checkbox" id="sv" checked>
+      Permitir entradas Souvenir</label>
+  </fieldset>
 
-  <div class="grp" id="riskGrp">
-    <h3>Risk</h3>
-    <label>Min chance of profit — <b id="wcLbl">50%</b></label>
+  <fieldset id="riskGrp">
+    <legend>Risco</legend>
+    <label for="wc">Chance mínima de lucro: <b id="wcLbl" class="num">50%</b></label>
     <input type="range" id="wc" min="0" max="100" step="5" value="50">
-    <label>Min ROI %</label><input type="number" id="roi" value="105" step="5">
-    <label>Min profit</label><input type="number" id="mp" value="0" step="1">
-    <label>Sort by</label>
+    <div class="row">
+      <div><label for="roi">ROI mínimo (%)</label><input type="number" id="roi" value="105" step="5"></div>
+      <div><label for="mp">Lucro médio mín.</label><input type="number" id="mp" value="0" step="1"></div>
+    </div>
+    <label for="sort">Ordenar por</label>
     <select id="sort">
-      <option value="win" selected>chance of profit</option>
-      <option value="safety">guaranteed floor</option>
-      <option value="profit">raw profit</option>
-      <option value="roi">profitability (ROI)</option>
-      <option value="ev">expected value</option>
-      <option value="cost">cheapest first</option>
+      <option value="win" selected>Chance de lucro</option>
+      <option value="safety">Pior caso (piso)</option>
+      <option value="profit">Lucro médio</option>
+      <option value="roi">Rentabilidade (ROI)</option>
+      <option value="ev">Valor esperado</option>
+      <option value="cost">Mais barato primeiro</option>
     </select>
-  </div>
+  </fieldset>
 
-  <div class="grp" id="gGrp" hidden>
-    <h3>Guaranteed</h3>
-    <label>Min guaranteed profit</label>
-    <input type="number" id="gmp" value="0" step="0.5">
-    <div class="note">Every outcome must beat the cost. There is no losing
-      roll — only a smaller win.</div>
-  </div>
+  <fieldset id="gGrp" hidden>
+    <legend>Garantido</legend>
+    <label for="gmp">Lucro mínimo garantido</label>
+    <input type="number" id="gmp" value="0" step="0.5" min="0" aria-describedby="gHint">
+    <div class="hint" id="gHint">Todo resultado precisa superar o custo. Não existe sorteio
+      perdedor — só um ganho menor.</div>
+  </fieldset>
 
-  <div class="grp">
-    <h3>Selling fee</h3>
-    <select id="fee">
-      <option value="" selected>Steam — 13% of listing</option>
+  <fieldset>
+    <legend>Taxa de venda</legend>
+    <label for="fee">Onde você vai vender</label>
+    <select id="fee" aria-describedby="feeHint">
+      <option value="" selected>Steam — 13% do preço anunciado</option>
       <option value="0.02">CSFloat — 2%</option>
       <option value="0.08">Skinport — 8%</option>
-      <option value="0">None</option>
+      <option value="0">Sem taxa</option>
     </select>
-    <label>Sell haircut</label>
-    <input type="number" id="hc" value="0.03" step="0.01" min="0" max="0.5">
-    <div class="note">Steam takes 5%+10% of your proceeds = 13.04% of the
-      buyer price. List at 100, receive 86.96.</div>
-  </div>
+    <label for="hc">Margem de segurança na venda</label>
+    <input type="number" id="hc" value="0.03" step="0.01" min="0" max="0.5" inputmode="decimal"
+      aria-describedby="feeHint">
+    <div class="hint" id="feeHint">A Steam fica com 5% + 10% do que você recebe = 13,04% do
+      preço pago pelo comprador: anuncie a 100, receba 86,96. A margem (0,03 = 3%) supõe que
+      você venda um pouco abaixo do menor anúncio.</div>
+  </fieldset>
 
-  <button class="go" id="run">Scan</button>
-  <button class="ghost" id="reset">Reset filters</button>
+  <fieldset>
+    <legend>Checagem de float</legend>
+    <label class="chk" for="fc"><input type="checkbox" id="fc" aria-describedby="fcNote">
+      Recalcular os primeiros resultados pelo float real das entradas</label>
+    <div class="hint" id="fcNote">Usa anúncios do CSFloat para precificar as entradas no float
+      que o contrato realmente exige (requer CSFLOAT_API_KEY). Mais lento.</div>
+  </fieldset>
+
+  <div class="actions">
+    <button class="btn primary" id="run">Buscar contratos</button>
+    <button class="btn ghost block" id="reset">Restaurar filtros de risco</button>
+  </div>
 </aside>
 
 <main>
-  <div class="bar" id="bar"></div>
-  <div id="out"><div class="empty"><h2>Ready</h2>
-    <p>Guaranteed mode finds contracts where every outcome beats the cost.</p></div></div>
+  <details class="guide" id="guide">
+    <summary>Como ler os resultados <span class="sumdim">— glossário rápido</span></summary>
+    <dl class="gl">
+      <div><dt>Contrato de trade-up</dt><dd>Você entrega 10 skins de uma raridade e recebe 1 skin
+        da raridade seguinte, sorteada entre as coleções das skins entregues.</dd></div>
+      <div><dt>Custo</dt><dd>Soma do que você paga pelas 10 skins de entrada.</dd></div>
+      <div><dt>Chance de lucro</dt><dd>Probabilidade de a skin recebida, depois da taxa de venda,
+        valer mais que o custo.</dd></div>
+      <div><dt>Pior caso</dt><dd>Ganho (ou perda) se sair o resultado mais barato. Positivo
+        significa que nenhum resultado dá prejuízo.</dd></div>
+      <div><dt>Lucro médio</dt><dd>Média do lucro considerando a chance de cada resultado
+        (valor esperado menos custo).</dd></div>
+      <div><dt>ROI</dt><dd>Quanto volta, em média, para cada 100% investido. 100% empata;
+        120% = recebe 20% a mais do que pagou.</dd></div>
+      <div><dt>Grau</dt><dd><b>Garantido</b>: todo resultado lucra. <b>Forte</b>: ≥ 75% de
+        chance. <b>Equilibrado</b>: ≥ 50%. <b>Arriscado</b>: ≥ 25%. <b>Loteria</b>: &lt; 25%.</dd></div>
+      <div><dt>Valores líquidos</dt><dd>Todos os valores de venda já descontam a taxa da
+        plataforma e a margem de segurança escolhidas nos filtros.</dd></div>
+    </dl>
+  </details>
+  <div class="bar" id="bar" aria-live="polite"></div>
+  <div id="out" tabindex="-1">
+    <div class="state"><h2>Pronto para buscar</h2>
+      <p>O modo <b>Garantido</b> encontra contratos em que todo resultado possível supera o
+        custo. O modo <b>Ranqueado</b> aceita algum risco e ordena pela chance de lucro.</p>
+      <button class="btn primary" style="width:auto" id="startBtn">Buscar contratos</button></div>
+  </div>
 </main>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
-let MODE='guaranteed', SYM='R$';
-const money=v=>SYM+(Math.abs(v)>=1000
-  ? v.toLocaleString(undefined,{maximumFractionDigits:0}) : v.toFixed(2));
+let MODE='ranked', SYM='R$', CUR='BRL', ROWS=[], NEXT=null, LAST=null, SEQ=0,
+    LASTQ=null, LASTMODE=null, FC_ON=false;
+const PAGE=20;
+// Every string from the API (skin/collection names come from a third-party
+// dataset) is escaped before it touches innerHTML.
+const esc=v=>String(v??'').replace(/[&<>"'`]/g,c=>({'&':'&amp;','<':'&lt;',
+  '>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+const safeUrl=u=>/^https:\/\/[^\s"'<>]+$/.test(u||'')?esc(u):'';
+const num=v=>Number.isFinite(Number(v))?Number(v):0;
 
+// ---- formatação pt-BR ------------------------------------------------------
+const FMT={};
+function curFmt(code,dec){
+  const k=code+'|'+dec;
+  if(!(k in FMT)){
+    try{ FMT[k]=new Intl.NumberFormat('pt-BR',{style:'currency',currency:code,
+      minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+    catch(e){ FMT[k]=null; }
+  }
+  return FMT[k];
+}
+const nf=(v,d=2,min=0)=>num(v).toLocaleString('pt-BR',
+  {minimumFractionDigits:min,maximumFractionDigits:d});
+const fixed=(v,d)=>nf(v,d,d);
+function moneyRaw(v,dec=2){
+  v=num(v); const f=curFmt(CUR,dec);
+  return f?f.format(v):SYM+' '+fixed(v,dec);
+}
+const money=v=>esc(moneyRaw(v));
+const smoney=v=>(num(v)>0?'+':'')+money(v);
+const pct=(v,d=1)=>esc(nf(v,d))+'%';
+
+// ---- traduções de exibição (a API continua em inglês) ---------------------
+const GRADE={guaranteed:'Garantido',strong:'Forte',even:'Equilibrado',risky:'Arriscado',
+  lottery:'Loteria'};
+const GRADE_TIP={guaranteed:'Todo resultado possível dá lucro',strong:'75% ou mais de chance de lucro',
+  even:'Entre 50% e 75% de chance de lucro',risky:'Entre 25% e 50% de chance de lucro',
+  lottery:'Menos de 25% de chance de lucro'};
+const gradeTxt=g=>esc(GRADE[g]||g);
+const WEAR={'Factory New':'Nova de Fábrica','Minimal Wear':'Pouco Usada',
+  'Field-Tested':'Testada em Campo','Well-Worn':'Bem Desgastada','Battle-Scarred':'Veterana de Guerra'};
+const wearHtml=w=>WEAR[w]?`<span title="${esc(w)}">${esc(WEAR[w])}</span>`:esc(w);
+const RARITY={consumer:'Nível Consumidor',industrial:'Nível Industrial',milspec:'Nível Militar',
+  restricted:'Restrito',classified:'Confidencial',covert:'Secreto'};
+const FC_STATUS={unavailable:'Indisponível',infeasible:'Inviável'};
+const SOURCE={snapshot:'arquivo local (snapshot)',supabase:'Supabase'};
+
+// ---- orçamento / moeda -----------------------------------------------------
 function syncB(src){
   const v=src==='r'?$('bRange').value:$('budget').value;
   $('budget').value=v; $('bRange').value=Math.min(v,1000);
-  $('bLbl').textContent=SYM+' '+Number(v).toLocaleString();
+  $('bLbl').textContent=moneyRaw(v,0);
 }
 $('bRange').oninput=()=>syncB('r'); $('budget').oninput=()=>syncB('n');
-$('currency').onchange=e=>{SYM={BRL:'R$',USD:'$',EUR:'€',GBP:'£'}[e.target.value]||'';syncB('n')};
+$('currency').onchange=e=>{CUR=e.target.value;
+  SYM={BRL:'R$',USD:'$',EUR:'€',GBP:'£'}[e.target.value]||'';syncB('n')};
 $('wc').oninput=e=>$('wcLbl').textContent=e.target.value+'%';
 
-function setMode(m){
+function setMode(m, go=true){
   MODE=m;
-  $('mG').classList.toggle('on',m==='guaranteed');
-  $('mR').classList.toggle('on',m==='ranked');
+  $('mG').setAttribute('aria-pressed',String(m==='guaranteed'));
+  $('mR').setAttribute('aria-pressed',String(m==='ranked'));
   $('riskGrp').hidden=m==='guaranteed';
   $('gGrp').hidden=m!=='guaranteed';
-  run();
+  if(go) run(false);
 }
 $('mG').onclick=()=>setMode('guaranteed');
 $('mR').onclick=()=>setMode('ranked');
 
-fetch('/api/meta').then(r=>r.json()).then(m=>{
-  $('meta').innerHTML=`${m.skins} skins · `+(m.snapshot_exists
-    ?`prices <b>${m.snapshot}</b>`
-    :`<span style="color:var(--warn)">no snapshot — run <b>tradeup warm</b></span>`);
-  $('rarity').innerHTML=m.tiers.map(t=>
-    `<option value="${t.key}"${t.key==='milspec'?' selected':''}>`+
-    `${t.label} (${t.collections})</option>`).join('');
+// painel de filtros recolhível (mobile)
+function setFilters(open){
+  $('wrap').classList.toggle('fopen',open);
+  $('fToggle').setAttribute('aria-expanded',String(open));
+  $('fToggle').textContent=open?'Fechar filtros':'Filtros';
+}
+$('fToggle').onclick=()=>{const o=!$('wrap').classList.contains('fopen');setFilters(o);
+  if(o) $('budget').focus();};
+const isNarrow=()=>window.matchMedia('(max-width:900px)').matches;
+
+// altura do cabeçalho fixo (para a sidebar sticky)
+function hdrH(){document.documentElement.style.setProperty('--hdr',
+  (isNarrow()?0:$('hdr').offsetHeight)+'px');}
+window.addEventListener('resize',hdrH); hdrH();
+
+const CODES={BRL:7,USD:1,EUR:3,GBP:2,RUB:5,CNY:23};
+fetch('/api/meta').then(r=>{if(!r.ok) throw new Error(r.statusText);return r.json();}).then(m=>{
+  const cur=Object.keys(CODES).find(k=>CODES[k]===m.snapshot_currency);
+  const src=SOURCE[m.price_source]||m.price_source;
+  $('meta').innerHTML=`<span><b class="num">${esc(nf(m.skins,0))}</b> skins no catálogo</span>`+
+    (m.snapshot_exists
+      ?`<span><b class="num">${esc(nf(m.snapshot_quotes,0))}</b> preços`+
+         (cur?` em <b>${esc(cur)}</b>`:' <span class="warnTxt">(moeda não identificada)</span>')+`</span>`+
+       `<span>Fonte dos preços: <b>${esc(src)}</b> · mercado da Steam</span>`+
+       (m.snapshot_updated_at?`<span>Atualizados em <b>${esc(new Date(num(m.snapshot_updated_at)*1000)
+          .toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}))}</b></span>`:'')+
+       (m.float_check_available?'':`<span class="warnTxt" title="Sem a chave do CSFloat, cada entrada usa o anúncio mais barato do desgaste, qualquer que seja o float">Preços por desgaste, não por float exato</span>`)
+      :`<span class="warnTxt">Sem preços — rode <code>tradeup bulk-warm</code></span>`);
+  if(cur && $('currency').querySelector(`option[value="${cur}"]`)){
+    $('currency').value=cur; $('currency').onchange({target:$('currency')});
+    // the prices exist in ONE currency: other options would only return 409
+    [...$('currency').options].forEach(o=>{ if(o.value!==cur){ o.disabled=true;
+      o.title='Os preços coletados estão em '+cur; } });
+  }
+  FC_ON=!!m.float_check_available;
+  if(!m.float_check_available){ $('fc').disabled=true;
+    $('fcNote').textContent='Indisponível: defina CSFLOAT_API_KEY no .env e reinicie o servidor.'; }
+  $('rarity').innerHTML=(m.tiers||[]).map(t=>
+    `<option value="${esc(t.key)}"${t.key==='milspec'?' selected':''} title="${esc(t.label)}">`+
+    `${esc(RARITY[t.key]||t.label)} (${num(t.collections)} coleções)</option>`).join('');
+  hdrH();
+}).catch(e=>{
+  $('meta').innerHTML=`<span class="warnTxt">Não foi possível carregar as informações de
+    preços (${esc(e.message)}). A busca ainda pode funcionar.</span>`;
+  hdrH();
 });
 
-function qs(){
-  const p={budget:$('budget').value,rarity:$('rarity').value,
+function qs(offset){
+  const p={budget:$('budget').value,rarity:$('rarity').value||'milspec',
     currency:$('currency').value,souvenir:$('sv').checked,
     float_percentile:$('fp').value,min_input_volume:$('miv').value,
-    haircut:$('hc').value,top:20};
+    haircut:$('hc').value,limit:PAGE,offset:offset||0,
+    float_check:$('fc').checked};
+  const f=$('fee').value; if(f!=='') p.fee_rate=f;
   if(MODE==='guaranteed'){ p.min_profit=$('gmp').value; }
   else{
     p.min_win_chance=$('wc').value; p.min_roi=$('roi').value;
     p.min_profit=$('mp').value; p.sort=$('sort').value;
-    const f=$('fee').value; if(f!=='') p.fee_rate=f;
   }
   return new URLSearchParams(p);
 }
 
-async function run(){
-  $('out').innerHTML=`<div class="empty"><span class="spin"></span>Scanning…</div>`;
-  $('bar').innerHTML='';
+// ---- erros -----------------------------------------------------------------
+const FIELD={budget:'orçamento',rarity:'raridade',currency:'moeda',souvenir:'souvenir',
+  float_percentile:'percentil de float',min_input_volume:'mínimo de anúncios',
+  haircut:'margem de segurança',fee_rate:'taxa de venda',min_profit:'lucro mínimo',
+  min_win_chance:'chance mínima de lucro',min_roi:'ROI mínimo',sort:'ordenação',
+  limit:'limite',offset:'deslocamento',float_check:'checagem de float'};
+function trMsg(m){
+  m=String(m??'');
+  const R=[[/^Input should be greater than or equal to (.+)$/,'deve ser maior ou igual a $1'],
+    [/^Input should be greater than (.+)$/,'deve ser maior que $1'],
+    [/^Input should be less than or equal to (.+)$/,'deve ser menor ou igual a $1'],
+    [/^Input should be less than (.+)$/,'deve ser menor que $1'],
+    [/^Input should be a valid (number|integer).*$/,'deve ser um número válido'],
+    [/^Input should be a valid boolean.*$/,'deve ser verdadeiro ou falso'],
+    [/^Input should be a finite number$/,'deve ser um número finito'],
+    [/^String should have at most (\d+) characters?$/,'deve ter no máximo $1 caracteres'],
+    [/^Field required$/,'é obrigatório'],
+    [/^Input should be (.+)$/,'deve ser $1']];
+  for(const [re,t] of R) if(re.test(m)) return m.replace(re,t);
+  return m;
+}
+function errText(body,fallback){
+  const d=body&&body.detail;
+  if(Array.isArray(d)) return d.map(x=>{const k=(x.loc||[]).slice(-1)[0];
+    return `${FIELD[k]||k}: ${trMsg(x.msg)}`;}).join('; ');
+  return d||fallback;
+}
+
+// ---- busca -----------------------------------------------------------------
+function loadingView(){
+  return `<div class="loadingTxt" role="status"><span class="spin" aria-hidden="true"></span>
+    Analisando contratos… ${$('fc').checked?'(a checagem de float pode levar alguns segundos)':''}</div>`+
+    '<div class="skel"></div>'.repeat(4);
+}
+async function run(more){
+  const my=++SEQ;
+  if(!more){ ROWS=[]; NEXT=null;
+    $('out').innerHTML=loadingView(); $('out').setAttribute('aria-busy','true');
+    $('bar').innerHTML=''; $('run').disabled=true; }
+  else if($('more')){ $('more').disabled=true;
+    $('more').innerHTML='<span class="spin" aria-hidden="true"></span> Carregando…'; }
   try{
-    const url=(MODE==='guaranteed'?'/api/guaranteed?':'/api/scan?')+qs();
+    if(!more){ LASTQ=qs(0); LASTMODE=MODE; }
+    const q=new URLSearchParams(LASTQ); q.set('offset', more?NEXT:0);
+    const url=(LASTMODE==='guaranteed'?'/api/guaranteed?':'/api/scan?')+q;
     const r=await fetch(url);
-    if(!r.ok) throw new Error((await r.json()).detail||r.statusText);
-    const j=await r.json(); SYM=j.symbol||SYM; render(j);
+    const body=await r.json().catch(()=>null);
+    if(my!==SEQ) return;                         // resposta antiga: ignora
+    if(!r.ok) throw new Error(errText(body,r.statusText||('HTTP '+r.status)));
+    SYM=body.symbol||SYM; if(body.currency) CUR=body.currency;
+    const before=ROWS.length;
+    ROWS=ROWS.concat(body.results); NEXT=body.next_offset;
+    LAST=body; render(body, more?before:null);
   }catch(e){
-    $('out').innerHTML=`<div class="empty"><h2>Scan failed</h2><p>${e.message}</p></div>`;
+    if(my!==SEQ) return;
+    if(more && ROWS.length){
+      const w=$('moreWrap');
+      if(w) w.innerHTML=`<p class="inlineErr" role="alert">Falha ao carregar mais:
+        ${esc(e.message)}</p><button class="btn ghost block" id="more">Tentar novamente</button>`;
+      if($('more')) $('more').onclick=()=>run(true);
+    }else{
+      $('out').innerHTML=`<div class="state err" role="alert"><h2>A busca falhou</h2>
+        <p>${esc(e.message)}</p>
+        <button class="btn primary" style="width:auto" id="retry">Tentar novamente</button></div>`;
+      $('retry').onclick=()=>run(false);
+    }
+  }finally{
+    if(my===SEQ){ $('run').disabled=false; $('out').removeAttribute('aria-busy'); }
   }
 }
-$('run').onclick=run;
+$('run').onclick=()=>{ if(isNarrow()){ setFilters(false); } run(false);
+  if(isNarrow()) $('out').scrollIntoView({behavior:'smooth',block:'start'}); };
+$('startBtn').onclick=()=>run(false);
+let DEB=null;
+const soon=()=>{clearTimeout(DEB); DEB=setTimeout(()=>run(false),400);};
 $('reset').onclick=()=>{$('wc').value=50;$('wcLbl').textContent='50%';
-  $('roi').value=105;$('mp').value=0;$('gmp').value=0;$('sort').value='win';};
-['sort','wc','roi','mp','gmp'].forEach(id=>
-  $(id).addEventListener('change',()=>run()));
+  $('roi').value=105;$('mp').value=0;$('gmp').value=0;$('sort').value='win'; run(false);};
+['sort','wc','roi','mp','gmp'].forEach(id=>$(id).addEventListener('change',soon));
 
-function render(j){
+// ---- renderização ----------------------------------------------------------
+const SORT_LBL={win:'chance de lucro',profit:'lucro médio',roi:'ROI',ev:'valor esperado',
+  safety:'pior caso',cost:'menor custo'};
+function render(j, firstNew){
   const g=j.mode==='guaranteed';
-  $('bar').innerHTML=`<span class="pill"><b>${j.count}</b> found</span>`+
-    (j.scanned?`<span class="pill">of <b>${j.scanned}</b> scanned</span>`:'')+
-    `<span class="pill">${g?'every outcome profits':'ranked by chance of profit'}</span>`;
-  if(!j.results.length){
+  const open=new Set([...document.querySelectorAll('.chead[aria-expanded="true"]')]
+    .map(h=>h.dataset.i));
+  $('bar').innerHTML=`<span class="pill"><b>${esc(nf(j.total,0))}</b> encontrados</span>`+
+    `<span class="pill">exibindo <b>${esc(nf(ROWS.length,0))}</b></span>`+
+    (j.scanned?`<span class="pill">de <b>${esc(nf(j.scanned,0))}</b> analisados${j.truncated?' (limite atingido)':''}</span>`:'')+
+    `<span class="pill">${g?'todo resultado lucra':'ordenados por '+esc(SORT_LBL[$('sort').value]||'chance de lucro')}</span>`+
+    `<span class="pill" title="O custo é o preço de compra; os resultados já descontam a taxa de venda">valores em <b>${esc(CUR)}</b> · resultados líquidos de taxas</span>`+
+    (j.currency_verified===false?`<span class="pill w" title="O snapshot de preços não informa a moeda">moeda não verificada</span>`:'')+
+    (j.note?`<span class="pill">${esc(j.note)}</span>`:'');
+  if(!ROWS.length){
     $('out').innerHTML=g
-      ? `<div class="empty"><h2>No guaranteed contracts</h2>
-         <p>None found at this budget — the cheapest outcome never covers
-         10 inputs. Raise the budget, try another rarity, or switch to
-         Ranked and accept some risk.</p></div>`
-      : `<div class="empty"><h2>Nothing matched</h2>
-         <p>Lower the minimum chance of profit, or raise the budget.</p></div>`;
+      ? `<div class="state"><h2>Nenhum contrato garantido</h2>
+         <p>Com os preços atuais, em nenhuma coleção o resultado mais barato, já
+         descontada a taxa de venda (${$('fee').value===''?'13% da Steam':esc(nf(num($('fee').value)*100,0))+'%'}),
+         paga as 10 entradas. Aumentar o orçamento não muda isso. Experimente outra raridade,
+         uma taxa de venda menor (ex.: CSFloat, 2%) ou o modo <b>Ranqueado</b>, que aceita
+         algum risco.</p>
+         <button class="btn primary" style="width:auto" id="toRanked">Ver modo Ranqueado</button></div>`
+      : `<div class="state"><h2>Nenhum contrato atende aos filtros</h2>
+         <p>Diminua a chance mínima de lucro ou o ROI mínimo, ou aumente o orçamento.</p></div>`;
+    if($('toRanked')) $('toRanked').onclick=()=>setMode('ranked');
     return;
   }
-  $('out').innerHTML=(g?`<div class="banner"><b>Every outcome beats the cost.</b>
-    There is no losing roll in these contracts — only a smaller win.</div>`:'')+
-    j.results.map((r,i)=>card(r,i,g)).join('');
-  document.querySelectorAll('.chead').forEach(h=>
-    h.onclick=()=>h.parentElement.classList.toggle('open'));
+  $('out').innerHTML=(g?`<div class="banner"><b>Todo resultado supera o custo.</b>
+    Nestes contratos não existe sorteio perdedor — só um ganho menor.</div>`:'')+
+    ROWS.map((r,i)=>card(r,i,g)).join('')+
+    `<div id="moreWrap">`+(NEXT!=null?`<button class="btn ghost block" id="more">Carregar mais
+      (${esc(nf(ROWS.length,0))} de ${esc(nf(j.total,0))})</button>`:'')+`</div>`;
+  document.querySelectorAll('.chead').forEach(h=>{
+    if(open.has(h.dataset.i)) toggle(h,true);
+    h.onclick=()=>toggle(h);
+  });
+  if($('more')) $('more').onclick=()=>run(true);
+  if(firstNew!=null){ const h=document.querySelector(`.chead[data-i="${firstNew}"]`); if(h) h.focus(); }
+}
+function toggle(h,force){
+  const o=force??h.getAttribute('aria-expanded')!=='true';
+  h.setAttribute('aria-expanded',String(o));
+  $(h.getAttribute('aria-controls')).hidden=!o;
+  h.closest('.card').classList.toggle('open',o);
+}
+
+function floatCheck(r){
+  const c=r.float_check; if(!c) return '';
+  if(c.status!=='ok')
+    return `<h3 class="sec">Checagem de float</h3><div class="note neg">${esc(FC_STATUS[c.status]||c.status)}: ${esc(c.reason||'')}</div>`;
+  return `<h3 class="sec">Checagem de float <span class="nc">— entradas precificadas no float que este contrato exige</span></h3>
+  <div class="tscroll" tabindex="0" role="region" aria-label="Comparação estimado x real">
+  <table><tr><th scope="col"><span class="sr">Base</span></th><th scope="col">Custo</th><th scope="col">Lucro médio</th><th scope="col">ROI</th><th scope="col">Chance</th><th scope="col">Grau</th></tr>
+    <tr><td>Estimado (preço por desgaste)</td><td>${money(c.est_cost)}</td><td>${smoney(c.est_profit)}</td>
+      <td>${pct(r.roi_pct)}</td><td>${pct(r.win_chance_pct,0)}</td><td>${gradeTxt(r.grade)}</td></tr>
+    <tr><td>Real (preço pelo float)</td><td>${money(c.real_cost)}</td>
+      <td class="${c.real_profit>0?'pos':'neg'}">${smoney(c.real_profit)}</td>
+      <td>${pct(c.real_roi_pct)}</td><td>${pct(c.real_win_chance_pct,0)}</td>
+      <td>${gradeTxt(c.real_grade)}</td></tr></table></div>
+  <div class="tscroll" tabindex="0" role="region" aria-label="Floats por entrada">
+  <table><tr><th scope="col">Entrada</th><th scope="col">Float máx. necessário</th><th scope="col">Ágio pelo float</th><th scope="col">Floats reais</th></tr>
+    ${(c.inputs||[]).map(i=>`<tr><td>${num(i.count)}× ${esc(i.skin)} (${wearHtml(i.wear)})</td>
+      <td>${fixed(i.max_float_allowed,4)}</td><td>${i.float_premium_pct!=null?pct(i.float_premium_pct):'—'}</td>
+      <td>${(i.floats||[]).map(f=>fixed(f,4)).join('; ')}</td></tr>`).join('')}</table></div>
+  <div class="note">O custo mudou ${pct(c.cost_delta_pct)}. O limite é o float mais alto
+    que ainda mantém todos os resultados no mesmo desgaste.</div>`;
 }
 
 function card(r,i,g){
   const grade=r.grade||'guaranteed';
   const win=r.win_chance_pct??100;
   const floor=r.guaranteed_profit??0;
-  return `<div class="card${g?' g':''}">
-   <div class="chead">
-    <div class="rank">${i+1}</div>
-    <div class="tgt"><div class="cn">${r.target_collection}
-      ${r.souvenir_inputs?`<span class="tag t-sv">${r.souvenir_inputs} sv</span>`:''}</div>
-      <div class="cs">${r.k_target}× ${r.filler_collection
-        ? `target + ${10-r.k_target}× ${r.filler_collection}`:'from one collection'}</div></div>
-    <div class="grade g-${grade}">${grade}</div>
-    <div class="m"><div class="v">${money(r.cost)}</div><div class="k">cost</div></div>
-    <div class="m"><div class="v ${win>=50?'pos':'neg'}">${win.toFixed(0)}%</div>
-      <div class="k">win</div></div>
-    <div class="m"><div class="v ${floor>0?'pos':'neg'}">${floor>0?'+':''}${money(floor)}</div>
-      <div class="k">worst case</div></div>
-    <div class="m hide"><div class="v ${r.profit>0?'pos':'neg'}">${r.profit>0?'+':''}${money(r.profit)}</div>
-      <div class="k">avg profit</div></div>
-    <div class="caret">›</div></div>
-   <div class="body">${body(r)}</div></div>`;
+  const nIn=(r.inputs||[]).reduce((a,b)=>a+(b.count||1),0);
+  return `<article class="card${g?' g':''}" aria-labelledby="t${i}">
+   <button class="chead" data-i="${i}" aria-expanded="false" aria-controls="cb${i}">
+    <span class="rank" aria-label="Posição ${i+1}">${i+1}</span>
+    <span class="tgt"><span class="cn" id="t${i}">${esc(r.target_collection)}${r.souvenir_inputs
+      ?`<span class="tag t-sv" title="${num(r.souvenir_inputs)} entradas Souvenir">${num(r.souvenir_inputs)} Souvenir</span>`:''}${r.float_sensitive
+      ?`<span class="tag t-thin" title="Só funciona comprando entradas com float baixo; o preço mostrado é do anúncio mais barato do desgaste, que costuma ter float alto">depende do float</span>`:''}</span>
+      <span class="cs">${num(r.k_target)}× ${r.filler_collection
+        ? `alvo + ${nIn-num(r.k_target)}× ${esc(r.filler_collection)}`:'de uma única coleção'}</span></span>
+    <span class="grade g-${esc(grade)}" title="${esc(GRADE_TIP[grade]||'')}">${gradeTxt(grade)}</span>
+    <span class="caret" aria-hidden="true"></span>
+    <span class="metrics">
+      <span class="m"><span class="v">${money(r.cost)}</span><span class="k">custo</span></span>
+      <span class="m"><span class="v ${win>=50?'pos':'neg'}">${pct(win,0)}</span>
+        <span class="k">chance de lucro</span></span>
+      <span class="m"><span class="v ${floor>0?'pos':'neg'}">${smoney(floor)}</span>
+        <span class="k">pior caso</span></span>
+      <span class="m"><span class="v ${r.profit>0?'pos':'neg'}">${smoney(r.profit)}</span>
+        <span class="k">lucro médio · ROI ${pct(r.roi_pct,0)}</span></span>
+    </span></button>
+   <div class="body" id="cb${i}" hidden>${body(r)}${floatCheck(r)}</div></article>`;
 }
 
 function body(r){
-  const lo=Math.min(...r.outcomes.map(o=>o.net)), hi=Math.max(...r.outcomes.map(o=>o.net));
-  const span=Math.max(hi,r.cost)*1.08;
-  const pct=v=>Math.min(100,Math.max(0,v/span*100));
+  const nets=r.outcomes.map(o=>num(o.net));
+  const lo=Math.min(...nets), hi=Math.max(...nets);
+  const span=Math.max(hi,r.cost)*1.08||1;
+  const at=v=>Math.min(100,Math.max(0,v/span*100));
+  const wins=r.outcomes.filter(o=>o.net>r.cost).length;
   const dots=r.outcomes.map(o=>
-    `<div class="dot${o.net>r.cost?'':' lose'}" style="left:${pct(o.net)}%"
-      title="${o.skin} ${money(o.net)}"></div>`).join('');
+    `<div class="dot${o.net>r.cost?'':' lose'}" style="left:${at(o.net)}%"
+      title="${esc(o.skin)}: ${money(o.net)}"></div>`).join('');
+  const nIn=r.inputs.reduce((a,b)=>a+(b.count||1),0);
 
-  return `<h4>Outcome spread</h4>
+  const fdep=r.float_sensitive&&!(r.float_check&&r.float_check.status==='ok')
+    ?`<div class="note neg" role="note"><b>Atenção ao float.</b> O preço de cada entrada é o do
+      anúncio mais barato do desgaste, qualquer que seja o float, mas o contrato supõe floats
+      baixos: com entradas no topo do desgaste (o mais comum nos anúncios baratos), algum
+      resultado cai para um desgaste pior. Folga de float médio: ${esc(fixed(r.float_slack,4))}.
+      ${FC_ON?'Use a <b>checagem de float</b> para o custo real.':'O custo real tende a ser maior.'}</div>`:'';
+  return `${fdep}<h3 class="sec">Dispersão dos resultados</h3>
   <div class="range">
-    <span class="lbl">${money(lo)}</span>
-    <div class="track"><div class="cost" style="width:${pct(r.cost)}%"></div>
-      <div class="costline" style="left:${pct(r.cost)}%"></div>${dots}</div>
-    <span class="lbl">${money(hi)}</span>
+    <span class="lim">${money(lo)}</span>
+    <div class="track" role="img" aria-label="${wins} de ${r.outcomes.length} resultados acima do custo de ${money(r.cost)}; menor ${money(lo)}, maior ${money(hi)}">
+      <div class="cost" style="width:${at(r.cost)}%"></div>
+      <div class="costline" style="left:${at(r.cost)}%"></div>${dots}</div>
+    <span class="lim">${money(hi)}</span>
   </div>
-  <div class="note" style="margin-top:-6px">Orange line is your cost
-    ${money(r.cost)}. Dots left of it are losing outcomes.</div>
+  <div class="legend"><span><i class="l" style="background:var(--warn)"></i>seu custo ${money(r.cost)}</span>
+    <span><i style="background:var(--ok)"></i>resultado com lucro</span>
+    <span><i style="background:var(--bad)"></i>resultado com prejuízo</span>
+    <span>${wins} de ${r.outcomes.length} skins possíveis dão lucro</span></div>
 
-  <h4>Outcomes — average trade-up float ${Number(r.avg_normalized_float).toFixed(6)}</h4>
+  <h3 class="sec">Resultados possíveis <span class="nc">— float médio do trade-up ${fixed(r.avg_normalized_float,6)}</span></h3>
   <div class="items">${r.outcomes.map(o=>`
     <div class="item ${o.profits?'win':'lose'}">
-      <img src="${o.image}" alt="" loading="lazy">
-      <div class="d"><div class="n">${o.skin}${depthTag(o)}</div>
-        <div class="w">${o.wear} · ${o.p_pct}%</div>
-        <div class="f">float ${o.float.toFixed(4)} · cap ${o.min_float}–${o.max_float}</div>
+      ${img(o.image)}
+      <div class="d"><div class="n" title="${esc(o.skin)}">${esc(o.skin)}${depthTag(o)}</div>
+        <div class="w">${wearHtml(o.wear)} · ${pct(o.p_pct)}</div>
+        <div class="f">float ${fixed(o.float,4)} · faixa ${nf(o.min_float,4)}–${nf(o.max_float,4)}</div>
         <div class="p ${o.profits?'pos':'neg'}">${money(o.net)}</div></div></div>`).join('')}</div>
 
-  <table><tr><th>Outcome</th><th>Float cap</th><th>Outcome float</th><th>Wear</th>
-    <th>Chance</th><th>Listed</th><th>Net</th><th>vs cost</th></tr>
+  <div class="tscroll" tabindex="0" role="region" aria-label="Tabela de resultados">
+  <table><tr><th scope="col">Resultado</th><th scope="col"><abbr title="Faixa de float possível da skin">Faixa</abbr></th>
+    <th scope="col">Float</th><th scope="col">Desgaste</th><th scope="col">Chance</th>
+    <th scope="col"><abbr title="Anúncios ativos (ou vendas em 24 h)">Anúncios</abbr></th>
+    <th scope="col"><abbr title="Valor de venda já descontadas taxa e margem">Líquido</abbr></th>
+    <th scope="col">vs. custo</th></tr>
     ${r.outcomes.map(o=>`<tr class="${o.profits?'win':''}">
-      <td>${o.skin}</td><td>${o.min_float} – ${o.max_float}</td>
-      <td>${o.float.toFixed(6)}</td><td>${o.wear}</td><td>${o.p_pct}%</td>
-      <td>${o.listings??o.volume24??'—'}</td><td>${money(o.net)}</td>
+      <td>${esc(o.skin)}</td><td>${nf(o.min_float,4)} – ${nf(o.max_float,4)}</td>
+      <td>${fixed(o.float,6)}</td><td>${wearHtml(o.wear)}</td><td>${pct(o.p_pct)}</td>
+      <td>${o.listings!=null||o.volume24!=null?esc(nf(o.listings??o.volume24,0)):'—'}</td><td>${money(o.net)}</td>
       <td class="${o.profits?'pos':'neg'}">${o.net>r.cost?'+':''}${money(o.net-r.cost)}</td>
-    </tr>`).join('')}</table>
+    </tr>`).join('')}</table></div>
 
-  <h4>Buy these ${r.inputs.reduce((a,b)=>a+(b.count||1),0)} items</h4>
-  <div class="items">${shop(r.inputs)}</div>
+  <h3 class="sec">Compre estes ${nIn} itens</h3>
+  <div class="items">${shop(r.inputs, r.float_slack)}</div>
   ${stats(r)}`;
+}
+
+function img(u){
+  const s=safeUrl(u);
+  return s?`<img src="${s}" alt="" loading="lazy" width="58" height="44">`
+    :'<span class="noimg" aria-hidden="true"></span>';
 }
 
 function depthTag(o){
   const n=o.listings??o.volume24;
   if(n==null) return '';
-  if(n<3) return '<span class="tag t-dead">dead</span>';
-  if(n<15) return '<span class="tag t-thin">thin</span>';
+  if(n<3) return '<span class="tag t-dead" title="Menos de 3 anúncios: difícil de vender">sem liquidez</span>';
+  if(n<15) return '<span class="tag t-thin" title="Menos de 15 anúncios: venda pode demorar">pouca oferta</span>';
   return '';
 }
 
-function shop(inputs){
+function maxFloat(i, slack){
+  // loosest float for this input that keeps every outcome in its wear
+  const span=num(i.max_float)-num(i.min_float); if(span<=0) return num(i.float);
+  const norm=(num(i.float)-num(i.min_float))/span;
+  const W={'Factory New':.07,'Minimal Wear':.15,'Field-Tested':.38,'Well-Worn':.45,'Battle-Scarred':1};
+  const hi=Math.min(W[i.wear]??1, num(i.max_float));
+  return Math.min(num(i.min_float)+(norm+Math.max(0,num(slack)))*span, hi);
+}
+function shop(inputs, slack){
   const g={};
   inputs.forEach(i=>{const k=i.skin+'|'+i.quality+'|'+(i.wear||'');
     (g[k]=g[k]||{...i,n:0}).n+=(i.count||1)});
   return Object.values(g).map(i=>`<div class="item">
-    <img src="${i.image}" alt="" loading="lazy">
-    <div class="d"><div class="n">${i.n}× ${i.skin}${i.quality==='Souvenir'
-      ?'<span class="tag t-sv">sv</span>':''}</div>
-      <div class="w">${i.collection}</div>
-      <div class="f">float ${i.float} · cap ${i.min_float}–${i.max_float}</div>
-      <div class="p">${money(i.price)} ea · ${money(i.price*i.n)}</div></div></div>`).join('');
+    ${img(i.image)}
+    <div class="d"><div class="n" title="${esc(i.skin)}">${num(i.n)}× ${esc(i.skin)}${i.quality==='Souvenir'
+      ?'<span class="tag t-sv">Souvenir</span>':''}</div>
+      <div class="w">${esc(i.collection)}${i.wear?' · '+wearHtml(i.wear):''}</div>
+      <div class="f">compre com float ≤ <b>${esc(fixed(maxFloat(i,slack),4))}</b> · faixa da skin ${nf(i.min_float,4)}–${nf(i.max_float,4)}</div>
+      <div class="p">${money(i.price)} cada · ${money(i.price*i.n)}</div>
+      <div class="f" title="Preço por desgaste: o anúncio mais barato pode ter float maior do que o necessário">preço: anúncio mais barato${i.wear?' em '+wearHtml(i.wear):''}, qualquer float</div></div></div>`).join('');
 }
 
 function stats(r){
   if(r.mode==='guaranteed')
-    return `<table><tr><th>Guaranteed floor</th><th>Upside</th><th>Floor ROI</th></tr>
+    return `<h3 class="sec">Métricas de risco</h3>
+      <div class="tscroll" tabindex="0" role="region" aria-label="Métricas de risco">
+      <table><tr><th scope="col">Piso garantido</th><th scope="col">Ganho extra possível</th><th scope="col">ROI do piso</th></tr>
       <tr><td class="pos">+${money(r.guaranteed_profit)}</td>
       <td class="pos">+${money(r.upside)}</td>
-      <td>${r.guaranteed_roi_pct}%</td></tr></table>
-      <div class="note">Floor ROI is what you make on the WORST roll,
-        not the average.</div>`;
-  return `<table><tr><th>Worst case</th><th>Expected loss</th><th>Risk/reward</th>
-    <th>n*</th><th>Top outcome share</th></tr>
+      <td>${pct(r.guaranteed_roi_pct)}</td></tr></table></div>
+      <div class="note">O ROI do piso é o que você ganha no PIOR sorteio, não na média.
+        O ganho extra é quanto o melhor resultado rende acima do piso.</div>`;
+  return `<h3 class="sec">Métricas de risco</h3>
+    <div class="tscroll" tabindex="0" role="region" aria-label="Métricas de risco">
+    <table><tr><th scope="col">Pior caso</th><th scope="col"><abbr title="Perda média nos casos em que o contrato dá prejuízo">Perda esperada</abbr></th>
+    <th scope="col"><abbr title="Lucro médio por unidade de perda no pior caso">Risco/retorno</abbr></th>
+    <th scope="col"><abbr title="Contratos necessários para confiar no lucro médio">n*</abbr></th>
+    <th scope="col"><abbr title="Parte do valor esperado que vem do melhor resultado">Peso do melhor resultado</abbr></th></tr>
     <tr><td class="${r.worst_loss>0?'neg':'pos'}">${r.worst_loss>0
-      ?'−'+money(r.worst_loss):'none'}</td>
+      ?'−'+money(r.worst_loss):'sem perda'}</td>
     <td>${r.expected_loss?money(r.expected_loss):'—'}</td>
-    <td>${r.risk_reward??'∞'}</td>
-    <td>${r.contracts_to_confidence??'—'}</td>
-    <td>${r.top_ev_share_pct}%</td></tr></table>
-    <div class="note">n* assumes the prices are correct and only the roll is
-      random — it cannot see a mispriced skin. Top outcome share above ~85%
-      means the whole edge rests on one price.</div>`;
+    <td>${r.risk_reward==null?'∞':esc(nf(r.risk_reward,2))}</td>
+    <td>${r.contracts_to_confidence==null?'—':esc(nf(r.contracts_to_confidence,0))}</td>
+    <td>${pct(r.top_ev_share_pct)}</td></tr></table></div>
+    <div class="note">n* supõe que os preços estão corretos e que só o sorteio é aleatório —
+      não detecta uma skin com preço errado. Peso do melhor resultado acima de ~85% significa
+      que todo o lucro depende de um único preço.</div>`;
 }
 </script>
+</body>
 </html>

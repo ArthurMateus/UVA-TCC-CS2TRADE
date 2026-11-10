@@ -10,6 +10,7 @@ Terminology (post-Retakes Update):
 """
 from __future__ import annotations
 import math
+from functools import lru_cache
 from collections import Counter
 from typing import Callable, Literal, Optional, Sequence
 from .models import ContractResult, InputItem, Outcome, Rarity, Skin, wear_from_float
@@ -29,11 +30,20 @@ def steam_net_from_buyer_price(buyer: float) -> float:
     """
     if buyer <= 0:
         return 0.0
-    s = buyer / (1.0 + STEAM_TOTAL_FEE)
-    p = max(0.01, math.floor(s * STEAM_PLATFORM_FEE * 100) / 100)
-    g = max(0.01, math.floor(s * STEAM_GAME_FEE * 100) / 100)
-    return round(max(0.0, buyer - p - g), 4)
+    # Valve works in integer cents: the buyer price is seller + fees(seller),
+    # where each fee is floor(seller * rate) with a 1-cent minimum. Seller
+    # proceeds are the LARGEST seller amount whose buyer price fits.
+    total = int(round(buyer * 100))
+    s = int(total / (1.0 + STEAM_TOTAL_FEE)) + 2
+    while s > 0 and s + _fee_cents(s) > total:
+        s -= 1
+    return round(max(0, s) / 100.0, 4)
 
+def _fee_cents(seller_cents: int) -> int:
+    return (max(1, math.floor(seller_cents * STEAM_PLATFORM_FEE))
+            + max(1, math.floor(seller_cents * STEAM_GAME_FEE)))
+
+@lru_cache(maxsize=1 << 16)
 def net_after_fee(buyer: float, fee_rate: Optional[float] = None) -> float:
     return steam_net_from_buyer_price(buyer) if fee_rate is None \
         else round(buyer * (1.0 - fee_rate), 4)
@@ -68,8 +78,17 @@ def validate_contract(inputs: Sequence[InputItem]) -> list[str]:
     p: list[str] = []
     if not inputs:
         return ["no inputs"]
-    if len({i.skin.rarity for i in inputs}) > 1:
+    rarities = {i.skin.rarity for i in inputs}
+    if len(rarities) > 1:
         p.append("inputs span multiple rarities")
+    r0 = inputs[0].skin.rarity
+    if r0.next_tier() is None or r0 == Rarity.RARE_SPECIAL:
+        p.append(f"{r0.label} items cannot be traded up")
+    elif len(rarities) == 1:
+        need = 5 if r0 == Rarity.COVERT else 10
+        if len(inputs) != need:
+            p.append(f"a {r0.label} contract needs exactly {need} inputs, "
+                     f"got {len(inputs)}")
     st = any(i.stattrak for i in inputs); sv = any(i.souvenir for i in inputs)
     if st and not all(i.stattrak for i in inputs):
         p.append("StatTrak must be all-or-nothing")
@@ -77,7 +96,7 @@ def validate_contract(inputs: Sequence[InputItem]) -> list[str]:
         p.append("StatTrak items cannot be mixed with Souvenir items")
     for i in inputs:
         if not (i.skin.min_float <= i.float_value <= i.skin.max_float):
-            p.append(f"{i.skin.name} float {i.float_value:.4f} outside cap "
+            p.append(f"{i.skin.name} float {i.float_value:.4f} outside its cap "
                      f"{i.skin.min_float:.2f}-{i.skin.max_float:.2f}")
         if i.souvenir and not i.skin.souvenir_capable:
             p.append(f"{i.skin.name} has no Souvenir variant")
@@ -144,6 +163,8 @@ def evaluate_contract(inputs, pool, price_fn, *, odds_model=DEFAULT_ODDS_MODEL,
     res.collection_odds = collection_odds(inputs, pool)
     probs = outcome_probabilities(inputs, pool, odds_model)
     t = inputs[0].skin.rarity.next_tier()
+    if t is None:            # Rare Special / top tier: nothing to trade into
+        return res
     look: dict[str, Skin] = {}
     for c in {i.skin.collection for i in inputs}:
         for s in pool(c, t):

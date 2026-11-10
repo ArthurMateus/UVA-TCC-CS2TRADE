@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable, Optional, Union
+from ..fsutil import atomic_write_text
 from ..models import Rarity, Skin
 
 CSGO_API_MIRRORS = (
@@ -57,13 +58,17 @@ class SkinDB:
         if sv/n > 0.90:
             w.append(f"{sv}/{n} ({sv/n:.0%}) marked Souvenir-capable -- almost "
                      "certainly wrong; those exist only for tournament collections")
+        both = sum(1 for s in self.skins if s.souvenir_capable and s.stattrak_capable)
+        if both/n > 0.50:
+            w.append(f"{both}/{n} skins flagged both StatTrak- and Souvenir-capable; "
+                     "the two are mutually exclusive in practice, check the parser")
         return w
     def save(self, path=DB_PATH) -> Path:
         path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
         pl = []
         for s in self.skins:
             d = asdict(s); d["rarity"] = int(s.rarity); pl.append(d)
-        path.write_text(json.dumps(pl, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic_write_text(path, json.dumps(pl, ensure_ascii=False, indent=1))
         return path
     @classmethod
     def load(cls, path=None):

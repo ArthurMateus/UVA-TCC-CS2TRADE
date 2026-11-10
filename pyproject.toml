@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cs2-tradeup-lab"
-version = "2.0.0"
+version = "2.1.0"
 description = "CS2 trade-up analysis: guaranteed-profit search, per-item odds, fee-aware EV, adaptive price fetching."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,9 +32,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-timeout>=2.3", "pytest-asyncio>=0.23"]
+supabase = ["psycopg[binary]>=3.1"]
 
 [project.urls]
-Homepage = "https://github.com/YOUR-USERNAME/cs2-tradeup-lab"
+Homepage = "https://github.com/ArthurMateus/UVA-TCC-CS2TRADE"
 
 [project.scripts]
 tradeup = "tradeup.cli:app"

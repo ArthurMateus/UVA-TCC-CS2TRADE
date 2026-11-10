@@ -11,6 +11,8 @@ WEAR_SHORT = {"Factory New":"FN","Minimal Wear":"MW","Field-Tested":"FT",
               "Well-Worn":"WW","Battle-Scarred":"BS"}
 
 def wear_from_float(f: float) -> str:
+    if f != f or f < 0.0 or f > 1.0:          # NaN or outside [0, 1]
+        raise ValueError(f"float out of range: {f!r}")
     for n, lo, hi in WEAR_BRACKETS:
         if lo <= f < hi:
             return n

@@ -1,5 +1,22 @@
 # CS2 Trade-Up Lab
 
+## Uso rápido (Windows)
+
+| Passo | O que fazer |
+|---|---|
+| 1. Instalar (uma vez) | Dois cliques em **`instalar.bat`**: cria o ambiente, instala tudo, baixa o catálogo de skins e cria o `.env` |
+| 2. Configurar o banco (opcional) | No `.env`, troque `[SUA-SENHA]` em `DATABASE_URL` pela senha do banco Supabase |
+| 3. Coletar preços (deixe rodando) | Dois cliques em **`coletar.bat`**. Varre a Steam em rodadas, salva tudo localmente e envia ao Supabase só o que mudou. Ctrl+C para parar; ao reabrir ele continua de onde parou |
+| 4. Ver os resultados | Dois cliques em **`abrir_site.bat`** (abre http://127.0.0.1:8000) |
+
+Pelo terminal, os mesmos passos são `tradeup setup`, `tradeup collect` e
+`tradeup serve`. A moeda padrão é BRL (troque com `TRADEUP_CURRENCY=USD` no
+`.env`). Uma rodada completa de todos os tiers leva cerca de 2 horas (6 s
+entre páginas, para não ser bloqueado pela Steam), e a próxima começa 60 min
+depois: `tradeup collect --interval 120 --rarities milspec,restricted` ajusta
+isso. Log em `data/collect.log`. No Windows, desative a suspensão automática
+(Configurações → Sistema → Energia) enquanto estiver coletando.
+
 A free, self-hosted trade-up analysis engine for Counter-Strike 2. It finds
 contracts where **every outcome beats the cost** — not lottery tickets with a
 3% chance of a payout.
@@ -62,10 +79,13 @@ cheapest Restricted in its own collection.
 tradeup guaranteed --budget 200
 
 # ┃ Collection              ┃ Cost ┃ Worst ┃  Best ┃ Guaranteed ┃ Floor ROI ┃
-# 1 │ The Militia Collection │ 2.70 │ 16.09 │ 31.90 │     +13.39 │      596% │
+# 1 │ The Militia Collection │ 2.70 │ 13.99 │ 27.75 │     +11.29 │      518% │
 ```
 
-*Floor ROI* is the return on the **worst** roll, not the average.
+*Floor ROI* is the return on the **worst** roll, not the average. Every value
+is **net of the marketplace fee** (Steam's 5%+10% by default, `--fee` for
+others). Up to v2.0 this mode showed buyer prices as "net", inflating the
+guaranteed profit; the sample above was 16.09 / +13.39 before the fix.
 
 ### 3. Price fetching self-tunes instead of guessing
 
@@ -82,11 +102,16 @@ v2 uses **AIMD** — the same congestion control TCP uses:
 | 25 clean responses | rate `+2`/min |
 | any 429 | rate `× 0.5`, freeze increases for 90 s |
 | 5 consecutive 429s | circuit breaker opens, all traffic stops |
+| cooldown over | ONE probe request (half-open); limited again = cooldown doubles |
+| 4 breaker trips | the run halts and reports what is left |
 
-Plus **concurrency** (8 in flight by default) so latency stops dominating,
-and a **negative cache** so names Steam has no listing for are never
-re-fetched. Requests overlap; the shared token bucket keeps the aggregate
-rate at whatever AIMD has settled on.
+Plus a **worker pool** (6 workers by default) pulling names from a queue, so
+one item in backoff never blocks the others, and a token bucket with a
+**burst of 2**, so the client never fires a volley after an idle period or a
+pause. A **negative cache** (24 h) remembers names with no listing; a single
+HTTP 500 is retried before being treated as "no listing", since Steam also
+returns 500 for transient failures. Every name ends as *ok*, *empty* or
+*gave up* -- nothing disappears silently.
 
 One subtlety worth knowing: concurrent requests return several 429s for a
 *single* congestion event. Halving per response would collapse the rate to
@@ -200,10 +225,46 @@ membership, not the upstream boolean (which is set on nearly every finish).
 |---|---|
 | `sync-db` | Skin database, float caps, collections |
 | `sync-images` | Image URLs from the same payload |
-| `warm` | Fetch prices — concurrent, adaptive, resumable |
-| `guaranteed` | Contracts that cannot lose. **Start here** |
+| `setup` | First run: catalogue + images in one download |
+| `collect` | **Unattended loop**: sweep all tiers in rounds, refresh the snapshot, push changed quotes to Supabase, sleep, repeat |
+| `bulk-warm` | Prices for a whole tier via **paginated search, filtered by rarity**. Resumable checkpoints. **Start here** |
+| `warm` | Prices + 24 h sales volume (priceoverview) — concurrent, adaptive, resumable |
+| `guaranteed` | Contracts that cannot lose (net of fees) |
 | `scan` | Ranked search, filtered on chance of profit |
+| `refine-floats` | Re-price the best contracts at the **input float they really need** (CSFloat) |
+| `db-push` | Mirror catalogue + quotes into Supabase (Postgres) |
 | `serve` | Web UI |
+
+### Pagination: fewer requests, no gaps
+
+Steam's `search/render` caps pages at **10 rows** no matter what `count`
+asks for, so a full-catalogue sweep is ~3.5k requests. `bulk-warm` filters
+server-side with Steam's own tags (`category_730_Rarity[]=tag_Rarity_Rare_Weapon`
+for Mil-Spec, `category_730_Quality[]=tag_normal|tag_tournament`): Mil-Spec
+normal quality is ~2.1k rows (~207 requests) instead of ~35k. `start`
+advances by rows actually received, every page is committed and
+checkpointed (`data/sweep_checkpoints.json`), a failed or repeated page marks
+the sweep *incomplete* instead of ending silently, and re-running resumes.
+
+The web API paginates too: `limit` (max 100) / `offset`, with `total` and
+`next_offset` in every response. A scan is computed once per parameter set
+(bounded LRU, single-flight), so pages and filters never recompute it.
+
+### Float-aware input prices
+
+Steam prices are per **wear**, but the search assumes each input has a low
+float inside its wear (`--float-percentile`, 15%) while paying the wear's
+cheapest listing -- usually a *high* float. That understates the cost exactly
+on contracts whose profit depends on landing a better output wear.
+
+`refine-floats` (or the *Float check* box in the UI) closes the gap for the
+shortlist: it computes the loosest average float that keeps every outcome in
+its wear, spreads that slack over the inputs, asks CSFloat for the cheapest
+listings under each float cap, and re-evaluates the contract with those
+**real floats and prices**. Default basis `premium` = Steam price × CSFloat
+float premium (same market and currency as the scan); `--basis csfloat`
+uses CSFloat's own prices. Contracts whose inputs are not listed under the
+cap are reported as *infeasible*. Needs `CSFLOAT_API_KEY` in `.env`.
 
 ### Web UI
 
@@ -240,14 +301,20 @@ cs2-tradeup-lab/
 │   ├── optimizer.py           risk-aware heuristic search
 │   ├── images.py              image index with placeholder fallback
 │   ├── cli.py                 all commands
-│   ├── web.py                 FastAPI, two modes
+│   ├── config.py              paths anchored at the repo, .env loading
+│   ├── float_pricing.py       float-aware second pass          [NEW]
+│   ├── liquidity.py           liquidity tiers (not yet wired into scans)
+│   ├── web.py                 FastAPI, two modes, paginated
 │   ├── static/index.html      single-file UI, no build step
 │   ├── data/loader.py         skin DB + CSGO-API sync
 │   └── prices/
 │       ├── steam.py           cache, quotes, price parsing
-│       ├── bulk.py            paginated bulk sweep
-│       └── fetcher.py         async AIMD fetcher            [NEW]
-└── tests/                     55 tests, all offline
+│       ├── bulk.py            paginated sweep, rarity tags, checkpoints
+│       ├── fetcher.py         async AIMD fetcher, worker pool, half-open breaker
+│       ├── csfloat.py         float-aware listings (CSFloat API)   [NEW]
+│       └── pg_store.py        Supabase/Postgres mirror             [NEW]
+├── supabase/schema.sql        tables, RLS, triggers (idempotent)
+└── tests/                     ~200 tests, all offline
 ```
 
 `engine.py` imports only `models.py` and the stdlib. Prices arrive through a
@@ -258,13 +325,17 @@ callback, which is why the whole suite runs with no network.
 ## Install
 
 ```powershell
-git clone https://github.com/YOUR-USERNAME/cs2-tradeup-lab.git
-cd cs2-tradeup-lab
+git clone https://github.com/ArthurMateus/UVA-TCC-CS2TRADE.git
+cd UVA-TCC-CS2TRADE
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-pytest                          # 55 tests, offline, on bundled fixtures
+pytest                          # ~200 tests, offline, on bundled fixtures
+copy .env.example .env          # then fill in the keys you have
 ```
+
+Optional extras: `pip install -e ".[supabase]"` for `db-push` and
+`TRADEUP_PRICE_SOURCE=supabase`.
 
 Python 3.10+. A fresh clone runs and passes its tests with **zero network
 access**. The bundled prices are fabricated — any ROI you see before `warm`
@@ -281,7 +352,7 @@ startup. A static test fails if any text I/O omits an encoding.
 Steam's `429` is **per IP**, lasts hours, and **re-arms every time you hit it
 while banned**. Retrying makes it worse.
 
-`warm` handles this automatically — it starts conservative, speeds up while
+`warm` and `bulk-warm` handle this automatically — it starts conservative, speeds up while
 clean, halves on a limit, and stops entirely if the limit is hit repeatedly.
 If the circuit breaker trips, stop and come back later; a router reboot that
 changes your IP also clears it.

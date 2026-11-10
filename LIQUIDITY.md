@@ -42,7 +42,7 @@ number. That needs its own guard.
 
 ```powershell
 python -m tradeup.cli scan --budget 200 --rarity milspec --currency BRL `
-  --offline data/price_snapshot.json --odds per_input --no-robust `
+  --odds per_input `
   --min-roi 1.0 --top 25 --json-out results.json
 
 python check_liquidity.py results.json --currency BRL
@@ -72,7 +72,7 @@ Using sell listings (what bulk-warm gives you):
 | < 60 | ok | 93% |
 | 60+ | deep | 98% |
 
-With 24h sales volume (from `warm-prices`) the thresholds are 1 / 5 / 25 and
+With 24h sales volume (from `warm`) the thresholds are 1 / 5 / 25 and
 volume always wins -- an item selling 30/day is liquid even if only 6 are
 listed right now.
 
@@ -101,7 +101,7 @@ where `depth_map` maps market_hash_name -> (listings, volume) from the cache.
 Liquidity haircuts are a proxy. The actual answer is 24h sales volume:
 
 ```powershell
-python -m tradeup.cli warm-prices --rarity milspec --currency BRL --rate 10
+python -m tradeup.cli warm --rarity milspec --currency BRL --rate 10
 ```
 
 That is slow, but you only need it for the ~20 names in your shortlist, not

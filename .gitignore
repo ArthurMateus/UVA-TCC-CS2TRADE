@@ -23,3 +23,17 @@ results.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# secrets
+.env
+.env.*
+!.env.example
+projeto_completo.txt
+data/collect.lock
+
+# runtime state of the collector
+data/collect.log*
+data/sweep_checkpoints.json
+data/*.sqlite-*
+data/.*.tmp
+.venv/

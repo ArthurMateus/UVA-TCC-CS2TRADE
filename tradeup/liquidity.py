@@ -44,7 +44,7 @@ class LiquidityPolicy:
     """How listing depth and sales volume translate into a haircut.
 
     `listings` is SELL LISTINGS (supply) -- what bulk-warm gives you.
-    `volume` is 24h SALES -- what warm-prices gives you, and far stronger
+    `volume` is 24h SALES -- what `tradeup warm` gives you, and far stronger
     evidence. When both are present, volume wins.
 
     Realization factors are deliberately blunt. They are not calibrated

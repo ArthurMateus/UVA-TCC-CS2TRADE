@@ -123,8 +123,8 @@ def test_unpriced_outcomes_are_tracked():
 
 def test_float_outside_cap_is_rejected():
     ak = mk("AK-47 | Redline","C",Rarity.CLASSIFIED,0.10,0.70)
-    assert any("outside cap" in p for p in validate_contract([InputItem(ak,0.05)]))
-    assert not any("outside cap" in p for p in validate_contract([InputItem(ak,0.15)]))
+    assert any("outside its cap" in p for p in validate_contract([InputItem(ak,0.05)]))
+    assert not any("outside its cap" in p for p in validate_contract([InputItem(ak,0.15)]))
 
 def test_stattrak_cannot_mix_with_souvenir():
     a = Skin("a|C","a",Rarity.MILSPEC,"C",0,1,True,True)

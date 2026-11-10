@@ -7,7 +7,7 @@ Answers three questions a progress bar cannot:
   2. Is it rate-limiting (429) or soft-banning (persistent 429 / empty 200)?
   3. How far along is the cache, and is it still growing?
 
-Safe to run while a warm-prices/bulk-warm job is going: it makes at most a
+Safe to run while a warm/bulk-warm job is going: it makes at most a
 handful of requests and only reads the cache.
 """
 from __future__ import annotations

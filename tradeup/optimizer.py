@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
 from .data.loader import SkinDB
 from .engine import (DEFAULT_ODDS_MODEL, OddsModel, evaluate_contract,
-                     n_contracts_for_confidence)
+                     n_contracts_for_confidence, trade_up_float)
 from .models import ContractResult, InputItem, Rarity, Skin
 from .pricing import PriceService, sourceable_float
 from .risk import RiskProfile, profile
@@ -30,8 +30,11 @@ class Unit:
     skin: Skin; wear: str; price: float; float_value: float; souvenir: bool = False
     @property
     def normalized(self) -> float:
-        s = self.skin.max_float - self.skin.min_float
-        return 0.0 if s <= 0 else (self.float_value - self.skin.min_float)/s
+        return trade_up_float(self.float_value, self.skin.min_float, self.skin.max_float)
+    @property
+    def label(self) -> str:
+        """Market name of this unit, e.g. 'Souvenir MAG-7 | X (Field-Tested)'."""
+        return self.skin.market_hash_name(self.wear, False, self.souvenir)
 
 @dataclass(slots=True)
 class Candidate:
@@ -40,6 +43,7 @@ class Candidate:
     filler_collection: Optional[str]
     k_target: int
     risk: Optional[RiskProfile] = None
+    wears: Optional[list] = None            # wear bought for each input
     @property
     def score(self) -> float:
         return self.result.profit
@@ -74,6 +78,21 @@ def _lowest_float(units, n, budget):
     if not aff: return []
     return [min(aff, key=lambda u: (u.normalized, u.price))] * n
 
+def _per_wear(units) -> list[Unit]:
+    """Cheapest unit of each wear (any quality), cheapest overall first.
+
+    Budget-INDEPENDENT on purpose: the candidate set must not change with the
+    budget, otherwise raising the budget swaps a mid-priced option for a
+    pricier one and contracts that fit a smaller budget disappear. The budget
+    is applied afterwards, as a plain cost filter (monotonic by design).
+    """
+    best: dict[str, Unit] = {}
+    for u in units:
+        cur = best.get(u.wear)
+        if cur is None or (u.price, u.normalized) < (cur.price, cur.normalized):
+            best[u.wear] = u
+    return sorted(best.values(), key=lambda u: (u.price, u.normalized))
+
 def search(db, prices, rarity, *, budget, odds_model=DEFAULT_ODDS_MODEL,
            fee_rate=None, stattrak=False, souvenir=True, float_percentile=0.15,
            min_roi=1.0, min_win_chance=0.0, max_unpriced_mass=0.10,
@@ -86,33 +105,44 @@ def search(db, prices, rarity, *, budget, odds_model=DEFAULT_ODDS_MODEL,
     """
     n_in = contract_size(rarity)
     if rarity.next_tier() is None: return []
+    # no max_unit_price: the candidate set is the same for every budget
     units = build_units(db, prices, rarity, float_percentile=float_percentile,
-                        stattrak=stattrak, souvenir=souvenir, max_unit_price=budget)
+                        stattrak=stattrak, souvenir=souvenir)
     if not units: return []
     fillers = sorted(units, key=lambda c: min(u.price for u in units[c]))[:max_filler_collections]
-    pool, pfn = db.pool, prices.price_fn()
+    pool, raw_pfn = db.pool, prices.price_fn()
+    memo: dict = {}
+
+    def pfn(s, w, st):                      # same output priced thousands of times
+        k = (s.id, w, st)
+        if k not in memo:
+            memo[k] = raw_pfn(s, w, st)
+        return memo[k]
     out: list[Candidate] = []
     targets = list(units)
+    wears = {c: _per_wear(us) for c, us in units.items()}
     for ti, target in enumerate(targets):
         if progress and ti % 10 == 0:
             progress(f"{ti}/{len(targets)} collections")
-        tu = units[target]
+        tw = wears[target]
         combos: list[tuple] = []
-        pure = _cheapest(tu, n_in)
-        if pure: combos.append((pure, None, n_in))
-        lf = _lowest_float(tu, n_in, budget)
-        if lf and lf != pure: combos.append((lf, None, n_in))
+        # pure: one contract per input wear (cheapest copy of that wear)
+        for t in tw:
+            combos.append(([t] * n_in, None, n_in))
+        # mixed: target wear w + filler in the SAME wear (keeps the average
+        # float where the target needs it) and + the filler's cheapest unit
         for fl in fillers:
             if fl == target: continue
-            fu = units[fl]
-            for k in range(1, n_in):
-                tp, fp = _cheapest(tu, k), _cheapest(fu, n_in-k)
-                if not tp or not fp: continue
-                if sum(x.price for x in tp+fp) > budget: continue
-                combos.append((tp+fp, fl, k))
-                rest = budget - sum(x.price for x in tp)
-                fl2 = _lowest_float(fu, n_in-k, rest)
-                if fl2 and fl2 != fp: combos.append((tp+fl2, fl, k))
+            fw = wears[fl]
+            f_by_wear = {u.wear: u for u in fw}
+            f_cheap = fw[0]
+            for t in tw:
+                partners = {f_cheap.wear: f_cheap}
+                if t.wear in f_by_wear:
+                    partners[t.wear] = f_by_wear[t.wear]
+                for f in partners.values():
+                    for k in range(1, n_in):
+                        combos.append(([t] * k + [f] * (n_in - k), fl, k))
         for cu, fl, k in combos:
             cost = sum(x.price for x in cu)
             if cost > budget or cost <= 0: continue
@@ -125,7 +155,8 @@ def search(db, prices, rarity, *, budget, odds_model=DEFAULT_ODDS_MODEL,
             if res.unpriced_mass > max_unpriced_mass: continue
             if res.roi < min_roi: continue
             if res.profit_chance < min_win_chance: continue
-            out.append(Candidate(res, target, fl, k, profile(res.outcomes, res.cost)))
+            out.append(Candidate(res, target, fl, k, profile(res.outcomes, res.cost),
+                                 [x.wear for x in cu]))
     seen: dict = {}
     for c in out:
         key = tuple(sorted((i.skin.id, round(i.float_value,5), i.souvenir)
@@ -138,9 +169,16 @@ def search(db, prices, rarity, *, budget, odds_model=DEFAULT_ODDS_MODEL,
     return ranked[:top_n]
 
 def explain(c: Candidate) -> dict:
+    from .float_pricing import float_dependence
+    from .models import wear_from_float
     r = c.result
     rk = c.risk or profile(r.outcomes, r.cost)
+    wears = c.wears or [wear_from_float(i.float_value) for i in r.inputs]
+    dep = float_dependence([(i.skin, w, i.float_value) for i, w in zip(r.inputs, wears)],
+                           [(o.skin, o.wear) for o in r.outcomes])
     return {
+        **dep,
+        "price_basis": "wear",
         "mode": "ranked",
         "target_collection": c.target_collection,
         "filler_collection": c.filler_collection,
@@ -165,10 +203,11 @@ def explain(c: Candidate) -> dict:
         "inputs": [{"skin": i.skin.name,
                     "quality": "Souvenir" if i.souvenir else "Normal",
                     "collection": i.skin.collection,
+                    "wear": w,
                     "float": round(i.float_value,5),
                     "min_float": round(i.skin.min_float,4),
                     "max_float": round(i.skin.max_float,4),
-                    "price": i.price} for i in r.inputs],
+                    "price": i.price} for i, w in zip(r.inputs, wears)],
         "outcomes": [{"skin": o.skin.name, "wear": o.wear, "float": o.out_float,
                       "p_pct": round(o.probability*100,3),
                       "gross": o.gross_price, "net": o.net_price,

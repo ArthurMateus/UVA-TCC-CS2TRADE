@@ -77,15 +77,21 @@ def main() -> None:
     rows = json.loads(rp.read_text(encoding="utf-8"))
     db = sqlite3.connect(str(cp))
 
+    cols = {c[1] for c in db.execute("PRAGMA table_info(prices)")}
+
     def depth(name: str):
+        """(sell_listings, sales_24h). v2.1 caches keep them in separate
+        columns; older caches stored bulk listings in `volume`."""
+        if "listings" in cols:
+            r = db.execute("SELECT listings, volume FROM prices WHERE name=? "
+                           "AND currency=?", (name, cur)).fetchone()
+            return tuple(r) if r else (None, None)
         r = db.execute(
             "SELECT volume, median FROM prices WHERE name=? AND currency=?",
             (name, cur)).fetchone()
         if not r:
             return None, None
         vol, med = r
-        # with no median the cache came from bulk-warm: `volume` holds
-        # SELL LISTINGS (supply), not 24h sales
         return (None, vol) if med is not None else (vol, None)
 
     print("=" * 100)
@@ -223,7 +229,7 @@ def main() -> None:
     print("Realization factors are blunt (dead 55%, thin 78%, ok 93%, deep 98%).")
     print("They encode 'fewer listings and no sales means you get less', which is")
     print("certain -- not a calibrated forecast. Use this to RANK, then confirm")
-    print("the survivors with warm-prices for real 24h sales volume.")
+    print("the survivors with `tradeup warm` for real 24h sales volume.")
     print("=" * 100)
     db.close()
 

@@ -106,7 +106,7 @@ def main() -> None:
         "SELECT count(*) FROM prices WHERE currency=? AND median IS NOT NULL",
         (cur,)).fetchone()[0]
     print(f"   with median ........ {med}"
-          + ("   (from warm-prices)" if med else
+          + ("   (from `tradeup warm`)" if med else
              "   (0 -> all from bulk-warm, which is expected)"))
     try:
         misses = db.execute("SELECT count(*) FROM misses WHERE currency=?",
@@ -230,7 +230,7 @@ def main() -> None:
         print("                         which is exactly what you need to buy 10.")
         print("  --min-volume 3         is weaker than intended for outputs; it")
         print("                         means 3 listed, not 3 sold per day.")
-        print("Confirm a shortlist with warm-prices before committing money.")
+        print("Confirm a shortlist with `tradeup warm` before committing money.")
     print("=" * 68)
     db.close()
 

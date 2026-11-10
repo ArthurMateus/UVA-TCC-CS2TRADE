@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Optional, Union
 
+from .fsutil import atomic_write_text
+
 ROOT = Path(__file__).resolve().parents[1]
 IMAGES_PATH = ROOT/"data"/"images.json"
 PLACEHOLDER = ("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAA"
@@ -42,5 +44,5 @@ def build_from_payload(raw: list) -> dict:
 
 def save(mapping: dict, path: Union[str, Path] = IMAGES_PATH) -> Path:
     p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
+    atomic_write_text(p, json.dumps(mapping, ensure_ascii=False))
     return p
